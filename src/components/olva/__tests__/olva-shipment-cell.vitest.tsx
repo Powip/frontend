@@ -195,12 +195,54 @@ describe("OlvaShipmentCell", () => {
     await user.click(screen.getByRole("button", { name: "Reintentar" }));
 
     const dialog = await screen.findByRole("alertdialog");
-    expect(within(dialog).getByText("Revisa en Olva antes de reintentar")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("Confirma con soporte antes de reintentar"),
+    ).toBeInTheDocument();
+    // The store cannot check Olva itself (the shipments go through Powip's account)
+    expect(within(dialog).getByText(/soporte de Powip/)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/Revisa en Olva/)).not.toBeInTheDocument();
 
-    await user.click(within(dialog).getByRole("button", { name: "Ya revisé, reintentar" }));
+    await user.click(within(dialog).getByRole("button", { name: "Soporte lo revisó, reintentar" }));
 
     await waitFor(() => expect(services.retryOlvaShipment).toHaveBeenCalledTimes(2));
     expect(services.retryOlvaShipment.mock.calls[1][0]).toEqual({ id: ID, confirmed: true });
+  });
+
+  it("one flagged for manual review says so, with the reason, instead of «se confirma solo»", async () => {
+    const reason =
+      "Revisión manual: Olva rechazó el reenvío (El DNI del destinatario no es válido)";
+    const flagged = toOlvaShipmentSummary(
+      buildOlvaShipmentListItemResponse({
+        status: "SUBMITTING",
+        trackingNumber: null,
+        failureReason: reason,
+      }),
+    );
+    services.retryOlvaShipment.mockResolvedValue({
+      status: "unknown",
+      itemKey: "PED-1001",
+      shipment: flagged,
+      error: { code: "OLVA_OUTCOME_UNKNOWN", message: "x" },
+    });
+
+    const { user } = renderCell(flagged);
+
+    expect(screen.getByText("Necesita revisión")).toBeInTheDocument();
+    expect(screen.queryByText(/se confirma solo/)).not.toBeInTheDocument();
+    expect(screen.getByText(/escribe a soporte de Powip/)).toBeInTheDocument();
+
+    // No round trip for a 409 the backend would answer anyway: the dialog opens right away
+    await user.click(screen.getByRole("button", { name: "Reintentar" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(services.retryOlvaShipment).not.toHaveBeenCalled();
+    // The actual reason, not «más de una hora» (a refused resend can be minutes old)
+    expect(within(dialog).getByText(/El DNI del destinatario no es válido/)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/más de una hora/)).not.toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "Soporte lo revisó, reintentar" }));
+
+    await waitFor(() => expect(services.retryOlvaShipment).toHaveBeenCalledOnce());
+    expect(services.retryOlvaShipment.mock.calls[0][0]).toEqual({ id: ID, confirmed: true });
   });
 
   it("a failed registration shows the reason Olva gave, with nothing to retry", () => {

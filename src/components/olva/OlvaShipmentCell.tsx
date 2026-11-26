@@ -190,10 +190,14 @@ function SubmittingNotice({ shipment }: { shipment: OlvaShipmentSummary }) {
   const retry = useRetryOlvaShipment();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
+  // Flagged by the backend (an hour without Olva's answer, or a resend Olva refused): only a
+  // confirmed retry is accepted, so the dialog opens right away instead of a 409 round trip
+  const needsReview = Boolean(shipment.failureReason);
+
   const run = (confirmed: boolean) =>
     retry.mutate(confirmed ? { id: shipment.id, confirmed: true } : { id: shipment.id }, {
       onError: (error) => {
-        // Past an hour the backend wants the store to check the guide at Olva first
+        // Past an hour the backend wants someone to check the guide at Olva first
         if (getOlvaErrorCode(error) === OLVA_SHIPMENT_ERROR_CODES.MANUAL_REVIEW) {
           setConfirmOpen(true);
         }
@@ -202,20 +206,28 @@ function SubmittingNotice({ shipment }: { shipment: OlvaShipmentSummary }) {
 
   return (
     <div className="grid gap-1.5">
-      <p className="text-xs">
-        Verificando con Olva. No lo registres de nuevo: se confirma solo en unos minutos o con
-        «Reintentar».
-      </p>
-      {shipment.failureReason ? (
-        <p className="text-muted-foreground text-xs">{shipment.failureReason}</p>
-      ) : null}
+      {needsReview ? (
+        <div className="grid gap-1 rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
+          <p className="font-medium text-xs">Necesita revisión</p>
+          <p className="text-xs">{shipment.failureReason}</p>
+          <p className="text-xs">
+            No lo registres de nuevo: escribe a soporte de Powip con el N° de pedido para que
+            revisen en Olva si la guía ya existe.
+          </p>
+        </div>
+      ) : (
+        <p className="text-xs">
+          Verificando con Olva. No lo registres de nuevo: se confirma solo en unos minutos o con
+          «Reintentar».
+        </p>
+      )}
       <div>
         <Button
           type="button"
           size="sm"
           variant="outline"
           disabled={retry.isPending}
-          onClick={() => run(false)}
+          onClick={() => (needsReview ? setConfirmOpen(true) : run(false))}
         >
           {retry.isPending ? (
             <Loader2 className="mr-1 size-4 animate-spin" />
@@ -229,15 +241,18 @@ function SubmittingNotice({ shipment }: { shipment: OlvaShipmentSummary }) {
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Revisa en Olva antes de reintentar</AlertDialogTitle>
+            <AlertDialogTitle>Confirma con soporte antes de reintentar</AlertDialogTitle>
             <AlertDialogDescription>
+              {shipment.failureReason ? `${shipment.failureReason}. ` : null}
               {OLVA_SHIPMENT_ERROR_MESSAGES[OLVA_SHIPMENT_ERROR_CODES.MANUAL_REVIEW]} Si la guía ya
-              existe en Olva, no reintentes: avísanos para vincularla.
+              existe, no reintentes: soporte la vincula al pedido.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={() => run(true)}>Ya revisé, reintentar</AlertDialogAction>
+            <AlertDialogAction onClick={() => run(true)}>
+              Soporte lo revisó, reintentar
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

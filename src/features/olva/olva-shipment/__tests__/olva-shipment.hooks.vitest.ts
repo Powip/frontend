@@ -95,13 +95,30 @@ describe("olva-shipment hooks", () => {
     const { result } = renderHook(() => useOlvaShipment("s-1"), { wrapper });
     await waitFor(() => expect(result.current.data?.status).toBe("PENDING_PAYMENT"));
 
-    await vi.advanceTimersByTimeAsync(15_000);
+    await vi.advanceTimersByTimeAsync(60_000);
     await waitFor(() => expect(result.current.data?.status).toBe("REGISTERED"));
 
     const calls = service.getOlvaShipment.mock.calls.length;
     await vi.advanceTimersByTimeAsync(60_000);
 
     expect(service.getOlvaShipment).toHaveBeenCalledTimes(calls);
+    vi.useRealTimers();
+  });
+
+  it("re-reads a pending payment once a minute, never every few seconds (Olva allows 60 req/min for every company)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    service.getOlvaShipment.mockResolvedValue({ id: "s-1", status: "PENDING_PAYMENT" });
+    const { wrapper } = createQueryClientWrapper();
+
+    const { result } = renderHook(() => useOlvaShipment("s-1"), { wrapper });
+    await waitFor(() => expect(result.current.data?.status).toBe("PENDING_PAYMENT"));
+    const first = service.getOlvaShipment.mock.calls.length;
+
+    await vi.advanceTimersByTimeAsync(45_000);
+    expect(service.getOlvaShipment).toHaveBeenCalledTimes(first);
+
+    await vi.advanceTimersByTimeAsync(16_000);
+    await waitFor(() => expect(service.getOlvaShipment).toHaveBeenCalledTimes(first + 1));
     vi.useRealTimers();
   });
 

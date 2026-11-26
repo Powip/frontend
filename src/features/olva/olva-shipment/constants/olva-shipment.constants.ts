@@ -22,8 +22,12 @@ const SECOND_MS = 1000;
 
 export const OLVA_SHIPMENT_LIST_STALE_TIME_MS = 30 * SECOND_MS;
 export const OLVA_SHIPMENT_DETAIL_STALE_TIME_MS = 10 * SECOND_MS;
-/** While a shipment awaits payment, its detail is re-read to notice the payment. */
-export const OLVA_SHIPMENT_PAYMENT_POLL_INTERVAL_MS = 15 * SECOND_MS;
+/**
+ * While a shipment awaits payment, its detail is re-read to notice the payment. Once a minute:
+ * the olva-api.lat key allows 60 requests a minute for every company together (the backend also
+ * asks Olva at most once a minute per shipment, and the payment webhook is the fast path).
+ */
+export const OLVA_SHIPMENT_PAYMENT_POLL_INTERVAL_MS = 60 * SECOND_MS;
 /** The label is a heavy personal-data PDF (served `no-store`): keep it only briefly. */
 export const OLVA_SHIPMENT_LABEL_STALE_TIME_MS = 5 * 60 * SECOND_MS;
 export const OLVA_SHIPMENT_LABEL_GC_TIME_MS = 5 * 60 * SECOND_MS;

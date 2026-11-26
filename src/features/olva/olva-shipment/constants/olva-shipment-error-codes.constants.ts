@@ -15,7 +15,8 @@ export const OLVA_SHIPMENT_ERROR_CODES = {
   DESTINATION_UBIGEO_NOT_FOUND: "SHIPMENT_DESTINATION_UBIGEO_NOT_FOUND",
   /**
    * The payment provider (e.g. PagoEfectivo) is down, so no payment could be created. The API
-   * answers 503 with this code; the user can retry or pick another payment method (Niubiz).
+   * answers 503 with this code; the user can retry later or, for a pickup at an agency, pick
+   * another way to pay (Niubiz is not offered).
    */
   PAYMENT_PROVIDER_UNAVAILABLE: "PAYMENT_PROVIDER_UNAVAILABLE",
   /** Olva refused this item of a bulk request. */

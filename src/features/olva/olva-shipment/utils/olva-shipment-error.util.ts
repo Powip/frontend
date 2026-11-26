@@ -10,7 +10,7 @@ export const OLVA_SHIPMENT_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   [OLVA_SHIPMENT_ERROR_CODES.DESTINATION_UBIGEO_NOT_FOUND]:
     "El ubigeo de destino no existe en Olva. Elige otro distrito e intenta de nuevo.",
   [OLVA_SHIPMENT_ERROR_CODES.PAYMENT_PROVIDER_UNAVAILABLE]:
-    "El medio de pago no está disponible por ahora. Elige pago con tarjeta (Niubiz) o intenta de nuevo en unos minutos.",
+    "PagoEfectivo no está disponible en este momento. Intenta de nuevo en unos minutos; si es recojo en agencia, también puedes elegir otra forma de pago.",
   [OLVA_SHIPMENT_ERROR_CODES.ORDER_NOT_FOUND]: "El pedido no existe en Powip.",
   [OLVA_SHIPMENT_ERROR_CODES.ORDER_NOT_DISPATCHABLE]:
     "El pedido no se puede despachar en su estado actual.",
@@ -19,7 +19,7 @@ export const OLVA_SHIPMENT_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   [OLVA_SHIPMENT_ERROR_CODES.NOT_RETRYABLE]:
     "Este envío ya no está esperando a Olva: actualiza la lista.",
   [OLVA_SHIPMENT_ERROR_CODES.MANUAL_REVIEW]:
-    "Olva no confirmó este envío en más de una hora. Revisa en Olva que la guía no exista antes de reintentar.",
+    "Olva no confirmó este envío. Antes de reintentar, pide a soporte de Powip que revise en Olva si la guía ya existe: reintentar sin revisarlo puede generar una segunda guía.",
   // REJECTED_BY_OLVA has no fixed text on purpose: its `message` already carries Olva's own
   // reason ("reason: detail"), and a generic sentence here would hide it from the user
 };

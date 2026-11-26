@@ -12,7 +12,7 @@ describe("getOlvaShipmentErrorMessage", () => {
     ],
     [
       "PAYMENT_PROVIDER_UNAVAILABLE",
-      "El medio de pago no está disponible por ahora. Elige pago con tarjeta (Niubiz) o intenta de nuevo en unos minutos.",
+      "PagoEfectivo no está disponible en este momento. Intenta de nuevo en unos minutos; si es recojo en agencia, también puedes elegir otra forma de pago.",
     ],
     [
       "SHIPMENT_ORIGIN_DOES_NOT_ACCEPT_PAYMENT",
