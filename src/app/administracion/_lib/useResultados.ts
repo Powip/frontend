@@ -44,6 +44,10 @@ import {
 } from "./ventas";
 
 const STALE = 5 * 60 * 1000;
+// Vacíos estables: un `?? []` nuevo en cada render haría recalcular los useMemo mientras carga.
+const SIN_PEDIDOS: PedidoAdmin[] = [];
+const SIN_GASTOS: IGastoOperativo[] = [];
+const SIN_MERMAS: IInventoryShrinkage[] = [];
 
 export function useAdminContexto() {
   const { auth } = useAuth();
@@ -83,8 +87,8 @@ export function useResultadosPeriodo(desde: DiaKey, hasta: DiaKey): DatosPeriodo
   const enviosQ = useAdminCourierCost(storeIds, desde, hasta, token);
   const publicidad = usePublicidadConectada(desde, hasta);
 
-  const pedidos = pedidosQ.data ?? [];
-  const gastosCrudos = gastosQ.data ?? [];
+  const pedidos = pedidosQ.data ?? SIN_PEDIDOS;
+  const gastosCrudos = gastosQ.data ?? SIN_GASTOS;
   const mermaData = mermaQ.data;
   const envios = Number(enviosQ.data ?? 0);
 
@@ -177,9 +181,9 @@ export function useResultadosAnuales(anio: number, opciones: { hastaDia?: DiaKey
   });
   const publicidad = usePublicidadConectada(desde, valido ? hasta : desde);
 
-  const pedidos = pedidosQ.data ?? [];
-  const gastos = gastosQ.data ?? [];
-  const mermas = mermaQ.data ?? [];
+  const pedidos = pedidosQ.data ?? SIN_PEDIDOS;
+  const gastos = gastosQ.data ?? SIN_GASTOS;
+  const mermas = mermaQ.data ?? SIN_MERMAS;
   const enviosPorMes = enviosQs.map((q) => Number(q.data ?? 0));
   const enviosClave = enviosPorMes.join(",");
 
@@ -253,7 +257,7 @@ export function usePedidosEnTransito() {
   const { companyId, hoy } = useAdminContexto();
   const desde = sumarDias(hoy, -(DIAS_EN_TRANSITO - 1));
   const q = useAdminOrders(companyId, desde, hoy);
-  const pedidos = useMemo(() => (q.data ?? []).filter(estaEnTransito), [q.data]);
+  const pedidos = useMemo(() => (q.data ?? SIN_PEDIDOS).filter(estaEnTransito), [q.data]);
   const saldo = useMemo(
     () => pedidos.reduce((s, p) => s + saldoPedido(p), 0),
     [pedidos],
