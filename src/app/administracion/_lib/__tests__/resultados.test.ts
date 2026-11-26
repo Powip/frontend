@@ -105,6 +105,18 @@ describe("calcularResultados", () => {
     expect(r.utilidadOperativa).toBe(-3000);
     expect(r.retornoPublicidad).toBeNull();
   });
+
+  it("sin gastos fijos no hay punto de equilibrio", () => {
+    const r = calcularResultados({
+      ventas,
+      gastos: prorratearGastos([], "2026-11-01", "2026-11-30"),
+      merma: 0,
+      envios: 0,
+      publicidadConectada: 0,
+      igvPct: 18,
+    });
+    expect(r.puntoEquilibrio).toEqual({ ventas: null, unidades: null, avance: null });
+  });
 });
 
 describe("rangoMesDentro", () => {

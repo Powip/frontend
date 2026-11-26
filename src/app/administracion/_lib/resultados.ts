@@ -142,7 +142,8 @@ export function calcularResultados(e: EntradaResultados): Resultados {
 
   let peVentas: number | null = null;
   let peUnidades: number | null = null;
-  if (margenContribucion !== null && margenContribucion > 0) {
+  // Sin gastos fijos cargados no hay punto de equilibrio que calcular (no es «S/ 0»).
+  if (gastosFijos > 0 && margenContribucion !== null && margenContribucion > 0) {
     peVentas = gastosFijos / margenContribucion;
     const contribucionPorUnidad = e.ventas.unidades > 0 ? contribucion / e.ventas.unidades : 0;
     peUnidades = contribucionPorUnidad > 0 ? Math.ceil(gastosFijos / contribucionPorUnidad) : null;

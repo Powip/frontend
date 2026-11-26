@@ -156,6 +156,8 @@ export interface LineaCascada {
   monto: number | null;
   signo: "+" | "−" | "=";
   nota?: ReactNode;
+  /** «aviso» (ámbar, por defecto) para lo que falta; «info» (gris) para notas que solo explican. */
+  notaTono?: "aviso" | "info";
   total?: boolean;
   /** Línea informativa (no suma): se muestra en gris. */
   informativa?: boolean;
@@ -208,7 +210,16 @@ export function TablaCascada({
                 )}
                 {linea.etiqueta}
               </span>
-              {linea.nota && <span className="block text-[11px] font-normal text-pc-warn">{linea.nota}</span>}
+              {linea.nota && (
+                <span
+                  className={cn(
+                    "block text-[11px] font-normal",
+                    linea.notaTono === "info" ? "text-pc-text-muted" : "text-pc-warn",
+                  )}
+                >
+                  {linea.nota}
+                </span>
+              )}
             </th>
             <td
               className={cn(
