@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { toWhatsAppRule } from "@/features/whatsapp/mappers/to-whatsapp-rules.mapper";
+import { ActivateRuleDialog } from "../ActivateRuleDialog";
 import { RuleCard } from "../RuleCard";
 
 const dto = {
@@ -72,5 +73,37 @@ describe("tarjeta del aviso en una tienda «Solo app»", () => {
   it("con API sigue exigiendo la plantilla aprobada", () => {
     card(false);
     expect(screen.getByRole("switch")).toBeDisabled();
+  });
+});
+
+describe("ventana de activar en una tienda «Solo app»", () => {
+  const dialog = (manualSend: boolean) =>
+    render(
+      <ActivateRuleDialog
+        request={
+          {
+            rule: toWhatsAppRule({ ...dto, manualSend } as never),
+            mode: "activate",
+            scopeSummary: "Todas las tiendas",
+            hasUnsavedChanges: false,
+          } as never
+        }
+        preview={{ kind: "pending-integration" }}
+        canPersist
+        onClose={jest.fn()}
+      />,
+    );
+
+  it("no promete que los pedidos actuales se envían solos", () => {
+    dialog(true);
+    expect(
+      screen.getByText("Quedan en la bandeja de envío asistido para enviarlos a mano."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Se envían respetando/)).not.toBeInTheDocument();
+  });
+
+  it("con API mantiene el texto de envío con horario", () => {
+    dialog(false);
+    expect(screen.getByText("Se envían respetando el horario permitido.")).toBeInTheDocument();
   });
 });
