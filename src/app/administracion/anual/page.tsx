@@ -1,545 +1,821 @@
 "use client";
 
-import { AdvertisingCompanySpend } from "@/components/advertising/AdvertisingCompanySpend";
-
 /**
- * Resumen Anual y Metas — §15 doc técnica.
+ * Resumen anual (FEAT-34: C1, C2, C9, M5, M12).
  *
- * CONECTADO A DATOS REALES: los KPIs mes a mes (ventas, COGS, margen bruto,
- * profit, margen neto), el heatmap, la proyección de cierre, mejor/peor mes,
- * Gastos x mes y el comparativo año actual vs año anterior salen de
- * `useAdminYearPnl` (`_lib/useMonthlyPnl.ts`) — agregando pedidos y gastos
- * reales del año, sin llamadas nuevas al backend.
- *
- * SOLUCIÓN PUENTE (localStorage, sin backend):
- * - Metas (ventas/profit/margen objetivo anual): no existe la entidad `meta`
- *   en ningún servicio (§20 doc). Mientras tanto se guardan en
- *   `localStorage` por empresa+año (`_lib/metasStorage.ts`) — sobreviven a
- *   recargar la página, pero viven solo en este navegador/dispositivo, no
- *   se comparten entre usuarios ni equipos. Reporte rápido lee esta misma
- *   meta (÷12) para su meta mensual. Cuando exista el backend, reemplazar
- *   `useMetasAnuales` por una query/mutation real.
- * - CPV y ROAS (tabla KPIs+Metas y Vista mensual): la inversión mensual sale
- *   de sumar las entradas fechadas de Pauta por canal
- *   (`usePautaEntries` + `inversionPorMes`), guardada en este dispositivo.
- *
- * SIGUE SIN DATO REAL:
- * - El semáforo por mes es una versión simplificada (solo margen neto vs
- *   meta) del semáforo de 4 indicadores del doc (§7.7), que también
- *   necesita ROAS y tasa de confirmación.
- * - "Ventas por tienda" (Vista general) es real (agrupa pedidos por
- *   `storeId`), pero no hay "profit por tienda" — `IGastoOperativo` no
- *   trae tienda, así que los gastos no se pueden prorratear por tienda. Y
- *   sigue sin existir meta por tienda (no hay esa entidad).
+ * - Año = el del «Hasta» del periodo elegido (antes siempre el año calendario de hoy). Los meses futuros quedan
+ *   vacíos y el mes en curso se mide hasta hoy (`useResultadosAnuales`).
+ * - Cada mes es la misma cuenta que el resto del módulo (`calcularResultados`): costo por línea con aviso de ventas
+ *   sin costo, día de creación en hora Lima (sin `updated_at`), gastos repartidos por días y publicidad de una fuente.
+ * - Margen del año ponderado: utilidad operativa del año ÷ ventas del año, no el promedio de los % de cada mes.
+ * - Comparación año a la fecha contra el año anterior a la misma fecha (antes: 12 meses contra lo que iba del año).
+ * - Proyección = ritmo diario del año a la fecha × días del año (antes contaba meses futuros con gastos cargados).
+ * - Metas sin valores por defecto: sin meta no hay cumplimiento ni semáforo.
  */
 
-import { useMemo, useState } from "react";
-import { useAuth } from "@/contexts/AuthContext";
-import { useAdminYearPnl, type MesPnlReal } from "../_lib/useMonthlyPnl";
-import { useMetasAnuales, type MetasAnuales } from "../_lib/metasStorage";
-import { usePautaEntries, inversionPorMes } from "../_lib/pautaStorage";
-import { soloEntregados } from "../_lib/realData";
-import { MESES_CORTOS, MESES_LARGOS } from "../_mock/data";
-import { fmtMoney, fmtPct } from "../_lib/format";
-import { NivelDot, NivelPill, type Nivel } from "../_components/nivel";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Target } from "lucide-react";
-import { toast } from "sonner";
+import { Pencil } from "lucide-react";
+import { type FormEvent, type ReactNode, useMemo, useState } from "react";
+import { LineChart, type LineSeries } from "@/components/panel-control/charts/LineChart";
+import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
+import type { SemaforoEstado } from "@/features/panel-control/shared/models/goal.model";
+import { axisSoles } from "@/features/panel-control/shared/utils/chart";
+import { calcularDelta } from "@/features/panel-control/shared/utils/delta";
+import { evaluarAvance } from "@/features/panel-control/shared/utils/semaforo";
 import { cn } from "@/lib/utils";
+import { type Nivel, NivelDot, NivelPill } from "../_components/nivel";
+import {
+  AdminTable,
+  Aviso,
+  AvisoCostos,
+  type ColumnaTabla,
+  claseBotonPrimario,
+  claseBotonSecundario,
+  claseInput,
+  Dato,
+  formatNumber,
+  formatPercent,
+  formatSoles,
+  KpiCard,
+  PanelCard,
+  PanelError,
+  PanelSkeleton,
+  SIN_DATO,
+} from "../_components/ui";
+import { type MetasAnuales, metaVentasMensual, useMetasAnuales } from "../_lib/metasStorage";
+import {
+  aDiaKey,
+  type DiaKey,
+  diasDelMes,
+  diasEntre,
+  etiquetaPeriodo,
+  MESES_CORTOS,
+  MESES_LARGOS,
+  partes,
+  sumarMeses,
+} from "../_lib/periodo";
+import type { EstadoPublicidad } from "../_lib/publicidad";
+import type { Resultados } from "../_lib/resultados";
+import { type ResultadoMes, useAdminContexto, useResultadosAnuales } from "../_lib/useResultados";
 
-type SubVista = "general" | "kpis" | "mensual" | "gastos" | "comp";
+// ---- Semáforo ---------------------------------------------------------------------------------
 
-const SUBVISTAS: { value: SubVista; label: string }[] = [
-  { value: "general", label: "Vista general" },
-  { value: "kpis", label: "📊 KPIs + Metas" },
-  { value: "mensual", label: "🗓️ Vista mensual" },
-  { value: "gastos", label: "💸 Gastos x mes" },
-  { value: "comp", label: "⚖️ Año vs año anterior" },
-];
+const NIVEL: Record<SemaforoEstado, Nivel> = {
+  cumple: "verde",
+  cerca: "ambar",
+  bajo: "rojo",
+  sin_datos: "sin-datos",
+};
 
-const CATEGORIAS_GASTO: { value: string; label: string }[] = [
-  { value: "PLANILLA", label: "Personal / Planilla" },
-  { value: "HERRAMIENTAS", label: "Herramientas + Oficina" },
-  { value: "PUBLICIDAD", label: "Publicidad" },
-  { value: "COURIER_PROPIO", label: "Courier Propio" },
-  { value: "OTRO", label: "Otro" },
-];
+const TEXTO_SEMAFORO: Record<SemaforoEstado, string> = {
+  cumple: "Cumple",
+  cerca: "Cerca",
+  bajo: "Bajo la meta",
+  sin_datos: "Sin datos",
+};
 
-function semaforoMes(m: MesPnlReal, margenObjetivo: number): Nivel {
-  if (!m.tieneDatos || m.margenNetoPct == null) return "sin-datos";
-  if (m.margenNetoPct >= margenObjetivo) return "verde";
-  if (m.margenNetoPct >= margenObjetivo * 0.6) return "ambar";
-  return "rojo";
+/** Margen contra el objetivo (fracciones 0..1), con la misma tolerancia que el Panel (15 %). */
+function evaluarMargen(valor: number | null, objetivo: number): SemaforoEstado {
+  if (valor === null) return "sin_datos";
+  if (valor >= objetivo) return "cumple";
+  return valor >= objetivo * 0.85 ? "cerca" : "bajo";
 }
+
+// ---- Filas por mes ----------------------------------------------------------------------------
+
+interface FilaMes {
+  clave: string;
+  mes: number;
+  estado: "futuro" | "sin_datos" | "parcial" | "completo";
+  /** Rótulo del tramo cuando el mes no está completo («hasta hoy», «hasta el 15»). */
+  tramo: string | null;
+  r: Resultados | null;
+  /** Meta de ventas del tramo medido (meta mensual × días medidos ÷ días del mes). */
+  metaVentas: number | null;
+}
+
+function tieneMovimiento(m: ResultadoMes): boolean {
+  return m.tieneDatos || m.resultados.publicidad.total > 0 || m.resultados.envios > 0;
+}
+
+function armarFilas(meses: ResultadoMes[], metas: MetasAnuales, hoy: DiaKey): FilaMes[] {
+  const metaMes = metaVentasMensual(metas);
+  return meses.map((m) => {
+    const clave = `${m.anio}-${String(m.mes).padStart(2, "0")}`;
+    if (!m.rango) return { clave, mes: m.mes, estado: "futuro", tramo: null, r: null, metaVentas: null };
+    const diasMes = diasDelMes(m.anio, m.mes);
+    const diasMedidos = diasEntre(m.rango.desde, m.rango.hasta);
+    const parcial = diasMedidos < diasMes;
+    const tramo = parcial ? (m.rango.hasta === hoy ? "hasta hoy" : `hasta el ${partes(m.rango.hasta)[2]}`) : null;
+    if (!tieneMovimiento(m)) return { clave, mes: m.mes, estado: "sin_datos", tramo, r: null, metaVentas: null };
+    return {
+      clave,
+      mes: m.mes,
+      estado: parcial ? "parcial" : "completo",
+      tramo,
+      r: m.resultados,
+      metaVentas: metaMes !== null ? (metaMes * diasMedidos) / diasMes : null,
+    };
+  });
+}
+
+const vacio = <span className="text-pc-text-muted">{SIN_DATO}</span>;
+
+function soles(valor: number | null | undefined, resaltarNegativo = false): ReactNode {
+  if (valor === null || valor === undefined) return vacio;
+  return <span className={cn(resaltarNegativo && valor < 0 && "text-pc-bad")}>{formatSoles(valor)}</span>;
+}
+
+// ---- Página -----------------------------------------------------------------------------------
 
 export default function ResumenAnualPage() {
-  const { auth } = useAuth();
-  const companyId = auth?.company?.id ?? "";
-  const token = auth?.accessToken ?? "";
-  const storeIds = useMemo(() => (auth?.company?.stores ?? []).map((s) => s.id), [auth?.company?.stores]);
+  const { fromDate, toDate } = useAdminPeriod();
+  const { companyId, hoy } = useAdminContexto();
+  const anio = partes(toDate)[0];
 
-  const anioActual = new Date().getFullYear();
-  const { meses, isLoading, gastosRaw, ordersRaw } = useAdminYearPnl(companyId, anioActual, storeIds, token);
-  const { meses: mesesAnioAnterior, isLoading: loadingAnterior } = useAdminYearPnl(companyId, anioActual - 1, storeIds, token);
+  const actual = useResultadosAnuales(anio);
+  // Año a la fecha contra el año anterior a la misma fecha.
+  const anterior = useResultadosAnuales(anio - 1, { hastaDia: sumarMeses(actual.hasta, -12) });
+  const [metas, setMetas] = useMetasAnuales(companyId, anio);
 
-  const [pautaEntries] = usePautaEntries(companyId);
-  const inversionMensual = useMemo(() => inversionPorMes(pautaEntries, anioActual), [pautaEntries, anioActual]);
-
-  const [vista, setVista] = useState<SubVista>("general");
-  const [metas, setMetas] = useMetasAnuales(companyId, anioActual);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [form, setForm] = useState(metas);
-
-  const mesesConDatos = meses.filter((m) => m.tieneDatos);
-  const ventasAcum = mesesConDatos.reduce((a, m) => a + m.ventas, 0);
-  const profitAcum = mesesConDatos.reduce((a, m) => a + m.profit, 0);
-  const margenProm = mesesConDatos.length ? mesesConDatos.reduce((a, m) => a + (m.margenNetoPct ?? 0), 0) / mesesConDatos.length : 0;
-  const mesesTranscurridos = mesesConDatos.length;
+  const finAnio = aDiaKey(anio, 12, 31);
+  const diasAnio = diasEntre(aDiaKey(anio, 1, 1), finAnio);
+  const diasMedidos = diasEntre(actual.desde, actual.hasta);
+  const anioCerrado = actual.hasta === finAnio;
+  const anioFuturo = actual.hasta < actual.desde;
+  const total = actual.total;
 
   const proyeccion = useMemo(() => {
-    const estVentas = mesesTranscurridos ? Math.round((ventasAcum / mesesTranscurridos) * 12) : 0;
-    const estProfit = mesesTranscurridos ? Math.round((profitAcum / mesesTranscurridos) * 12) : 0;
-    return { estVentas, estProfit };
-  }, [ventasAcum, profitAcum, mesesTranscurridos]);
+    if (diasMedidos <= 0) return { ventas: null, utilidad: null };
+    const factor = diasAnio / diasMedidos;
+    return { ventas: total.ventas * factor, utilidad: total.utilidadOperativa * factor };
+  }, [diasAnio, diasMedidos, total.ventas, total.utilidadOperativa]);
 
-  function guardarMetas() {
-    setMetas(form);
-    setDialogOpen(false);
-    toast.success("Metas guardadas en este dispositivo — no se sincronizan con otros usuarios todavía");
+  const filas = armarFilas(actual.meses, metas, hoy);
+  const medidos = actual.meses.filter((m) => m.rango !== null);
+  const hayDatos = medidos.some(tieneMovimiento);
+  const anteriorConDatos = anterior.meses.some((m) => m.rango !== null && tieneMovimiento(m));
+  const rangoAnterior = etiquetaPeriodo(anterior.desde, anterior.hasta);
+  const deltas = !anterior.cargando && anteriorConDatos;
+
+  const rotulo = (
+    <p className="text-xs text-pc-text-muted">
+      Año <span className="font-semibold text-pc-text">{anio}</span>: el del último día del periodo elegido (
+      {etiquetaPeriodo(fromDate, toDate)}). Para ver otro año, cambia el periodo arriba.
+    </p>
+  );
+
+  if (anioFuturo) {
+    return (
+      <div className="space-y-3.5">
+        {rotulo}
+        <Aviso tono="info" titulo={`${anio} todavía no empezó`}>
+          No hay meses cerrados ni en curso para mostrar.
+        </Aviso>
+      </div>
+    );
   }
 
-  if (isLoading || loadingAnterior) {
-    return <div className="p-8 space-y-4">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)}</div>;
+  if (actual.error) {
+    return (
+      <div className="space-y-3.5">
+        {rotulo}
+        <PanelError error={actual.error as Error} />
+      </div>
+    );
+  }
+
+  if (actual.cargando) {
+    return (
+      <div className="space-y-3.5">
+        {rotulo}
+        <PanelSkeleton variant="kpis" label="resumen anual" />
+        <PanelSkeleton variant="tabla" label="resultados por mes" />
+      </div>
+    );
   }
 
   return (
-    <div className="p-8 space-y-6">
-      <AdvertisingCompanySpend from={`${anioActual}-01-01`} to={`${anioActual}-12-31`} />
-      <p className="text-sm text-muted-foreground">
-        Estos indicadores usan registros manuales por conciliar.
+    <div className="space-y-3.5">
+      {rotulo}
+      <AvisoCostos costo={total.costo} />
+      <NotaPublicidad estado={actual.publicidad.estado} />
+      {!hayDatos && (
+        <Aviso tono="info" titulo={`Todavía no hay ventas entregadas ni gastos en ${anio}`}>
+          Cuando haya, vas a ver acá el resultado de cada mes.
+        </Aviso>
+      )}
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <KpiCard
+          label={`Ventas ${anio}`}
+          value={formatSoles(total.ventas)}
+          delta={deltas ? calcularDelta(total.ventas, anterior.total.ventas) : undefined}
+          sub={`${etiquetaPeriodo(actual.desde, actual.hasta)} · ${formatNumber(total.pedidos)} ventas · sin IGV ${formatSoles(total.ventasSinIgv)}`}
+        />
+        <KpiCard
+          label="Utilidad operativa"
+          value={<span className={cn(total.utilidadOperativa < 0 && "text-pc-bad")}>{formatSoles(total.utilidadOperativa)}</span>}
+          delta={deltas ? calcularDelta(total.utilidadOperativa, anterior.total.utilidadOperativa) : undefined}
+          sub="Ventas − costo − comisiones, envíos y publicidad − gastos fijos"
+        />
+        <KpiCard
+          label="Margen operativo"
+          value={formatPercent(total.margenOperativo, 1)}
+          sub={
+            <>
+              Utilidad del año ÷ ventas del año.
+              {deltas && ` ${anio - 1} a la misma fecha: ${formatPercent(anterior.total.margenOperativo, 1)}.`}
+            </>
+          }
+        />
+        <KpiCard
+          label={anioCerrado ? `Cierre ${anio}` : `Proyección ${anio}`}
+          value={formatSoles(anioCerrado ? total.ventas : proyeccion.ventas)}
+          sub={
+            anioCerrado
+              ? "Año cerrado: es el total real"
+              : `Utilidad proyectada ${formatSoles(proyeccion.utilidad)} · al ritmo de ${formatNumber(diasMedidos)} días`
+          }
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[3fr_2fr]">
+        <PanelCard titulo="Ventas y utilidad por mes" subtitulo={`Meses medidos de ${anio}; el mes en curso, hasta hoy`}>
+          <GraficoAnual anio={anio} medidos={medidos} anteriores={anterior.meses} />
+        </PanelCard>
+        <MetasCard
+          anio={anio}
+          metas={metas}
+          setMetas={setMetas}
+          total={total}
+          proyeccion={proyeccion}
+          anioCerrado={anioCerrado}
+        />
+      </div>
+
+      <PanelCard
+        titulo={`Resultados por mes de ${anio}`}
+        subtitulo="Utilidad bruta = ventas − costo de producto − merma. Los meses que faltan quedan vacíos."
+      >
+        <TablaMeses filas={filas} total={total} metas={metas} diasMedidos={diasMedidos} diasAnio={diasAnio} />
+      </PanelCard>
+
+      <PanelCard
+        titulo={`${anio} contra ${anio - 1}, a la misma fecha`}
+        subtitulo={`${etiquetaPeriodo(actual.desde, actual.hasta)} contra ${rangoAnterior}`}
+      >
+        {anterior.cargando ? (
+          <PanelSkeleton variant="tabla" label="comparación con el año anterior" />
+        ) : !anteriorConDatos ? (
+          <Aviso tono="info">No hay ventas ni gastos de {anio - 1} hasta esa fecha para comparar.</Aviso>
+        ) : (
+          <Comparativo anio={anio} actual={total} anterior={anterior.total} />
+        )}
+      </PanelCard>
+    </div>
+  );
+}
+
+// ---- Bloques ----------------------------------------------------------------------------------
+
+function NotaPublicidad({ estado }: { estado: EstadoPublicidad }) {
+  if (estado === "sin_permiso") {
+    return (
+      <p className="text-xs text-pc-text-muted">
+        No tienes permiso para ver las cuentas de publicidad conectadas: la publicidad incluye solo lo cargado en
+        Gastos › Publicidad.
       </p>
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h2 className="text-lg font-bold">Resumen Anual {anioActual}</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">Todos los meses (reales) · Metas guardadas en este dispositivo (localStorage) · Proyección de cierre</p>
-        </div>
-        <Button size="sm" variant="outline" onClick={() => { setForm(metas); setDialogOpen(true); }}>
-          <Target className="h-4 w-4 mr-1.5" /> Editar metas {anioActual}
-        </Button>
-      </div>
-
-      <div className="inline-flex bg-muted rounded-lg p-1 gap-1 flex-wrap">
-        {SUBVISTAS.map((s) => (
-          <button key={s.value} onClick={() => setVista(s.value)} className={cn("px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap", vista === s.value ? "bg-background shadow-sm" : "text-muted-foreground")}>{s.label}</button>
-        ))}
-      </div>
-
-      {vista === "general" && (
-        <VistaGeneral anioActual={anioActual} meses={meses} ventasAcum={ventasAcum} profitAcum={profitAcum} margenProm={margenProm} mesesTranscurridos={mesesTranscurridos} metas={metas} proyeccion={proyeccion} stores={auth?.company?.stores ?? []} ordersRaw={ordersRaw} />
-      )}
-      {vista === "kpis" && <VistaKpis meses={meses} metas={metas} inversionMensual={inversionMensual} />}
-      {vista === "mensual" && <VistaMensual meses={meses} metas={metas} inversionMensual={inversionMensual} />}
-      {vista === "gastos" && <VistaGastos gastosRaw={gastosRaw as any[]} anio={anioActual} />}
-      {vista === "comp" && <VistaComparativo anioActual={anioActual} mesesActual={meses} mesesAnterior={mesesAnioAnterior} />}
-
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Editar metas {anioActual}</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Meta de ventas anual S/</Label>
-              <Input type="number" value={form.ventasAnual} onChange={(e) => setForm((f) => ({ ...f, ventasAnual: Number(e.target.value) || 0 }))} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Meta de profit anual S/</Label>
-                <Input type="number" value={form.profitAnual} onChange={(e) => setForm((f) => ({ ...f, profitAnual: Number(e.target.value) || 0 }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Margen objetivo %</Label>
-                <Input type="number" value={form.margenObjetivoPct} onChange={(e) => setForm((f) => ({ ...f, margenObjetivoPct: Number(e.target.value) || 0 }))} />
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={guardarMetas}>Guardar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
+    );
+  }
+  if (estado === "error" || estado === "sin_servicio") {
+    return (
+      <p className="text-xs text-pc-text-muted">
+        No se pudo leer el consumo de las cuentas de publicidad conectadas: la publicidad incluye solo lo cargado en
+        Gastos › Publicidad.
+      </p>
+    );
+  }
+  return null;
 }
 
-function VistaGeneral({
-  anioActual, meses, ventasAcum, profitAcum, margenProm, mesesTranscurridos, metas, proyeccion, stores, ordersRaw,
+function GraficoAnual({
+  anio,
+  medidos,
+  anteriores,
 }: {
-  anioActual: number; meses: MesPnlReal[]; ventasAcum: number; profitAcum: number; margenProm: number;
-  mesesTranscurridos: number; metas: MetasAnuales; proyeccion: { estVentas: number; estProfit: number };
-  stores: { id: string; name?: string }[]; ordersRaw: any[];
+  anio: number;
+  medidos: ResultadoMes[];
+  anteriores: ResultadoMes[];
 }) {
-  const ventasPorTienda = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const o of soloEntregados(ordersRaw)) {
-      const sid = o.storeId || "sin-tienda";
-      map[sid] = (map[sid] ?? 0) + Number(o.grandTotal || 0);
-    }
-    return map;
-  }, [ordersRaw]);
-  const ventasTotalTiendas = Object.values(ventasPorTienda).reduce((a, b) => a + b, 0);
-  const mesesConDatos = meses.filter((m) => m.tieneDatos);
-  const mejorMes = mesesConDatos.length ? [...mesesConDatos].sort((a, b) => b.profit - a.profit)[0] : null;
-  const peorMes = mesesConDatos.length ? [...mesesConDatos].sort((a, b) => a.profit - b.profit)[0] : null;
-  const metasCons = [
-    { label: "Ventas anuales", actual: `${fmtMoney(ventasAcum)} / ${fmtMoney(metas.ventasAnual)}`, pct: metas.ventasAnual > 0 ? (ventasAcum / metas.ventasAnual) * 100 : 0 },
-    { label: "Profit anual", actual: `${fmtMoney(profitAcum)} / ${fmtMoney(metas.profitAnual)}`, pct: metas.profitAnual > 0 ? (profitAcum / metas.profitAnual) * 100 : 0 },
-    { label: "Margen objetivo", actual: `${fmtPct(margenProm)} / ${metas.margenObjetivoPct}%`, pct: metas.margenObjetivoPct > 0 ? (margenProm / metas.margenObjetivoPct) * 100 : 0 },
+  if (medidos.length < 2) {
+    return <p className="text-xs text-pc-text-muted">El gráfico aparece desde el segundo mes del año.</p>;
+  }
+  const hayPerdida = medidos.some((m) => m.resultados.utilidadOperativa < 0);
+  const anteriorPorMes = new Map(anteriores.filter((m) => m.rango).map((m) => [m.mes, m.resultados.ventas]));
+  const series: LineSeries[] = [
+    {
+      id: "ventas",
+      nombre: `Ventas ${anio}`,
+      color: "var(--pc-series-1)",
+      valores: medidos.map((m) => m.resultados.ventas),
+    },
+    {
+      id: "utilidad",
+      nombre: "Utilidad operativa",
+      color: "var(--pc-series-2)",
+      valores: medidos.map((m) => Math.max(0, m.resultados.utilidadOperativa)),
+    },
   ];
-  const maxV = Math.max(...meses.map((m) => m.ventas), 1);
-  const verdes = meses.filter((m) => semaforoMes(m, metas.margenObjetivoPct) === "verde").length;
-  const rojos = meses.filter((m) => semaforoMes(m, metas.margenObjetivoPct) === "rojo").length;
-
+  if (anteriorPorMes.size > 0) {
+    series.push({
+      id: "anterior",
+      nombre: `Ventas ${anio - 1}`,
+      color: "var(--pc-series-3)",
+      valores: medidos.map((m) => anteriorPorMes.get(m.mes) ?? 0),
+      punteada: true,
+    });
+  }
   return (
-    <div className="space-y-6">
-      <div className={cn("rounded-2xl p-6 text-white bg-gradient-to-br", profitAcum >= 0 ? "from-emerald-600 to-emerald-800" : "from-red-600 to-red-800")}>
-        <p className="text-[11px] font-bold tracking-wide opacity-80 uppercase">{anioActual} · {mesesTranscurridos} meses con datos de 12</p>
-        <h3 className="text-xl font-bold mt-1.5">{profitAcum >= 0 ? "🟢 Negocio rentable" : "🔴 Negocio en pérdida"} este año</h3>
-        <p className="text-sm opacity-95 mt-1">Profit acumulado {fmtMoney(profitAcum)} · Margen {fmtPct(margenProm, 1)} prom. · {verdes} meses verdes · {rojos} rojos</p>
-        <div className="flex gap-1.5 flex-wrap mt-4">
-          {meses.map((m) => {
-            const s = semaforoMes(m, metas.margenObjetivoPct);
-            return (
-              <div key={m.mes} className="w-9 text-center text-[10px] opacity-90">
-                <div className="text-base leading-none mb-0.5">{s === "verde" ? "🟢" : s === "ambar" ? "🟡" : s === "rojo" ? "🔴" : "⬜"}</div>
-                {MESES_CORTOS[m.mes - 1]}
-              </div>
-            );
-          })}
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
-          <div className="bg-white/15 rounded-lg p-3"><p className="text-[11px] opacity-85">Ventas acum.</p><p className="text-lg font-bold mt-0.5">{fmtMoney(ventasAcum)}</p></div>
-          <div className="bg-white/15 rounded-lg p-3"><p className="text-[11px] opacity-85">Profit acum.</p><p className="text-lg font-bold mt-0.5">{fmtMoney(profitAcum)}</p></div>
-          <div className="bg-white/15 rounded-lg p-3"><p className="text-[11px] opacity-85">Margen prom.</p><p className="text-lg font-bold mt-0.5">{fmtPct(margenProm, 1)}</p></div>
-          <div className="bg-white/15 rounded-lg p-3"><p className="text-[11px] opacity-85">Mejor mes</p><p className="text-lg font-bold mt-0.5">{mejorMes ? `${MESES_LARGOS[mejorMes.mes - 1]} · ${fmtMoney(mejorMes.profit)}` : "—"}</p></div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="bg-indigo-50/40 dark:bg-indigo-500/5">
-          <CardHeader><CardTitle className="text-sm">🎯 Metas {anioActual} — Consolidado <span className="text-[10px] font-normal text-muted-foreground">guardado en este dispositivo</span></CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            {metasCons.map((m) => (
-              <div key={m.label}>
-                <div className="flex justify-between text-sm mb-1"><span>{m.label}</span><b>{m.actual}</b></div>
-                <Progress value={Math.min(100, m.pct)} />
-                <p className="text-xs text-muted-foreground mt-1">{fmtPct(m.pct, 1)}</p>
-              </div>
-            ))}
-            <div className="rounded-lg border bg-background p-3">
-              <p className="text-xs font-bold text-primary mb-2">📈 Proyección cierre {anioActual} (al ritmo actual)</p>
-              <div className="space-y-1.5 text-xs">
-                <div className="flex justify-between"><span className="text-muted-foreground">Ventas estimadas</span><b>{fmtMoney(proyeccion.estVentas)} <span className="text-muted-foreground font-normal">({metas.ventasAnual > 0 ? fmtPct((proyeccion.estVentas / metas.ventasAnual) * 100, 1) : "—"} de la meta)</span></b></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Profit estimado</span><b>{fmtMoney(proyeccion.estProfit)} <span className="text-muted-foreground font-normal">({metas.profitAnual > 0 ? fmtPct((proyeccion.estProfit / metas.profitAnual) * 100, 1) : "—"} de la meta)</span></b></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Falta para meta ventas</span><b>{fmtMoney(Math.max(0, metas.ventasAnual - ventasAcum))}</b></div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader><CardTitle className="text-sm">🏪 Ventas por tienda <span className="text-[10px] font-normal text-muted-foreground">real · sin meta por tienda (no hay esa entidad)</span></CardTitle></CardHeader>
-          <CardContent>
-            {stores.length <= 1 ? (
-              <p className="text-sm text-muted-foreground py-4">Esta empresa tiene {stores.length} tienda configurada — el desglose por tienda no aporta información adicional todavía.</p>
-            ) : (
-              <div className="space-y-3">
-                {stores.map((s) => {
-                  const ventas = ventasPorTienda[s.id] ?? 0;
-                  const pct = ventasTotalTiendas > 0 ? (ventas / ventasTotalTiendas) * 100 : 0;
-                  return (
-                    <div key={s.id}>
-                      <div className="flex justify-between text-sm mb-1"><span>{s.name ?? s.id}</span><b>{fmtMoney(ventas)}</b></div>
-                      <Progress value={pct} />
-                      <p className="text-xs text-muted-foreground mt-1">{fmtPct(pct, 1)} del total</p>
-                    </div>
-                  );
-                })}
-                {(ventasPorTienda["sin-tienda"] ?? 0) > 0 && (
-                  <div>
-                    <div className="flex justify-between text-sm mb-1"><span className="text-muted-foreground">Sin tienda asignada</span><b>{fmtMoney(ventasPorTienda["sin-tienda"])}</b></div>
-                    <Progress value={(ventasPorTienda["sin-tienda"] / ventasTotalTiendas) * 100} />
-                    <p className="text-xs text-muted-foreground mt-1">{fmtPct((ventasPorTienda["sin-tienda"] / ventasTotalTiendas) * 100, 1)} del total — pedidos sin `storeId`</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {mejorMes && <MesDestacado mes={mejorMes} tono="verde" titulo="🏆 Mejor mes" />}
-        {peorMes && peorMes !== mejorMes && <MesDestacado mes={peorMes} tono="rojo" titulo="📉 Peor mes" />}
-      </div>
-
-      <Card>
-        <CardHeader><CardTitle className="text-sm">📊 Ventas vs Profit por mes (real)</CardTitle></CardHeader>
-        <CardContent>
-          <div className="flex items-end gap-2 h-40 pt-4">
-            {meses.map((m) => (
-              <div key={m.mes} className="flex-1 flex flex-col items-center justify-end gap-1.5 h-full">
-                <div className="flex gap-0.5 items-end justify-center w-full h-full">
-                  <div className="w-2.5 rounded-t bg-primary" style={{ height: `${(m.ventas / maxV) * 100}%` }} />
-                  <div className="w-2.5 rounded-t bg-emerald-500" style={{ height: `${(Math.max(0, m.profit) / maxV) * 100}%` }} />
-                </div>
-                <span className="text-[10px] text-muted-foreground">{MESES_CORTOS[m.mes - 1].slice(0, 1)}</span>
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-4 mt-2 text-xs text-muted-foreground"><span>▼ Ventas reales</span><span className="text-emerald-600">▼ Profit</span></div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function MesDestacado({ mes, tono, titulo }: { mes: MesPnlReal; tono: "verde" | "rojo"; titulo: string }) {
-  const filas = [
-    ["Ventas", fmtMoney(mes.ventas)],
-    [mes.profit >= 0 ? "Profit" : "Pérdida", fmtMoney(mes.profit)],
-    ["Margen neto", mes.margenNetoPct != null ? fmtPct(mes.margenNetoPct) : "—"],
-    ["COGS", fmtMoney(mes.cogs)],
-  ];
-  const porque = mes.profit >= 0
-    ? `Ventas de ${fmtMoney(mes.ventas)} cubrieron ${fmtMoney(mes.cogs + mes.gastosFijos + mes.courierCost)} en costos y gastos, dejando ${fmtPct(mes.margenNetoPct ?? 0)} de margen neto.`
-    : `Ventas de ${fmtMoney(mes.ventas)} no cubrieron los ${fmtMoney(mes.cogs + mes.gastosFijos + mes.courierCost)} en COGS + gastos fijos + courier de ese mes.`;
-  return (
-    <Card className={tono === "verde" ? "bg-emerald-50/60 dark:bg-emerald-500/5 border-emerald-200 dark:border-emerald-500/30" : "bg-red-50/60 dark:bg-red-500/5 border-red-200 dark:border-red-500/30"}>
-      <CardHeader><CardTitle className={cn("text-sm", tono === "verde" ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300")}>{titulo} — {MESES_LARGOS[mes.mes - 1]} {mes.anio}</CardTitle></CardHeader>
-      <CardContent className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          {filas.map(([l, v]) => (
-            <div key={l}><p className="text-[10px] text-muted-foreground uppercase">{l}</p><p className="text-lg font-bold">{v}</p></div>
-          ))}
-        </div>
-        <div className={cn("rounded-lg p-3 text-xs", tono === "verde" ? "bg-emerald-100/60 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-300" : "bg-red-100/60 dark:bg-red-500/10 text-red-800 dark:text-red-300")}>
-          <b>¿Por qué?</b> {porque}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function VistaKpis({ meses, metas, inversionMensual }: { meses: MesPnlReal[]; metas: MetasAnuales; inversionMensual: number[] }) {
-  return (
-    <div className="space-y-4">
-      <div className="rounded-lg border bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/30 p-3.5 text-sm text-blue-800 dark:text-blue-300">
-        Las metas las defines tú.
-      </div>
-      <Card>
-        <CardContent className="pt-5 overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow><TableHead>KPI</TableHead>{MESES_CORTOS.map((m) => <TableHead key={m} className="text-right">{m}</TableHead>)}</TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableRow className="bg-muted/40">
-                <TableCell className="text-[10px] font-bold text-muted-foreground uppercase">Semáforo (margen neto)</TableCell>
-                {meses.map((m) => <TableCell key={m.mes} className="text-center"><NivelDot nivel={semaforoMes(m, metas.margenObjetivoPct)} className="mx-auto" /></TableCell>)}
-              </TableRow>
-              <FilaKpi label="Ventas" valores={meses.map((m) => (m.tieneDatos ? fmtMoney(m.ventas) : "—"))} />
-              <FilaKpi label="🎯 Meta ventas (÷12)" valores={meses.map(() => fmtMoney(metas.ventasAnual / 12))} destacado />
-              <FilaKpi label="COGS" valores={meses.map((m) => (m.tieneDatos ? fmtMoney(m.cogs) : "—"))} />
-              <FilaKpi label="Gross profit %" valores={meses.map((m) => (m.tieneDatos ? fmtPct(m.utilidadBrutaPct) : "—"))} />
-              <FilaKpi label="Gastos + courier" valores={meses.map((m) => (m.tieneDatos ? fmtMoney(m.gastosFijos + m.courierCost) : "—"))} />
-              <FilaKpi label="Profit" valores={meses.map((m) => (m.tieneDatos ? fmtMoney(m.profit) : "—"))} />
-              <FilaKpi label="🎯 Meta profit (÷12)" valores={meses.map(() => fmtMoney(metas.profitAnual / 12))} destacado />
-              <FilaKpi label="Margen neto %" valores={meses.map((m) => (m.margenNetoPct != null ? fmtPct(m.margenNetoPct) : "—"))} />
-              <FilaKpi label="Inversión manual" valores={meses.map((_, i) => (inversionMensual[i] > 0 ? fmtMoney(inversionMensual[i]) : "—"))} />
-              <FilaKpi label="CPV neto" valores={meses.map((m, i) => (inversionMensual[i] > 0 && m.unidades > 0 ? fmtMoney(inversionMensual[i] / m.unidades, 2) : "—"))} />
-              <FilaKpi label="Ventas / inversión manual" valores={meses.map((m, i) => (inversionMensual[i] > 0 ? `${(m.ventas / inversionMensual[i]).toFixed(1)}×` : "—"))} />
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function FilaKpi({ label, valores, destacado }: { label: string; valores: string[]; destacado?: boolean }) {
-  return (
-    <TableRow className={destacado ? "bg-indigo-50/50 dark:bg-indigo-500/5" : ""}>
-      <TableCell className={cn(destacado && "text-primary font-semibold")}>{label}</TableCell>
-      {valores.map((v, i) => <TableCell key={i} className="text-right font-mono">{v}</TableCell>)}
-    </TableRow>
-  );
-}
-
-function VistaMensual({ meses, metas, inversionMensual }: { meses: MesPnlReal[]; metas: MetasAnuales; inversionMensual: number[] }) {
-  const hoy = new Date();
-  const [mesSeleccionado, setMesSeleccionado] = useState(hoy.getMonth() + 1);
-  const mes = meses.find((m) => m.mes === mesSeleccionado) ?? meses[hoy.getMonth()];
-  const metaMes = metas.ventasAnual / 12;
-  const metaProfitMes = metas.profitAnual / 12;
-  const semaforo = semaforoMes(mes, metas.margenObjetivoPct);
-  const invMes = inversionMensual[mes.mes - 1] ?? 0;
-  const cpvMes = invMes > 0 && mes.unidades > 0 ? invMes / mes.unidades : null;
-  const roasMes = invMes > 0 ? mes.ventas / invMes : null;
-
-  const cards: { label: string; valor: string; sub?: string; tone?: "green" | "amber" | "red" | "purple" }[] = [
-    { label: "VENTAS", valor: fmtMoney(mes.ventas) },
-    { label: `META VENTAS: ${fmtMoney(metaMes)}`, valor: metaMes > 0 ? fmtPct((mes.ventas / metaMes) * 100, 1) : "—", sub: `Faltan ${fmtMoney(Math.max(0, metaMes - mes.ventas))}`, tone: "amber" },
-    { label: "PROFIT", valor: `${fmtMoney(mes.profit)} ${mes.profit >= 0 ? "🟢" : "🔴"}` },
-    { label: `META PROFIT: ${fmtMoney(metaProfitMes)}`, valor: metaProfitMes > 0 ? fmtPct((mes.profit / metaProfitMes) * 100, 1) : "—", sub: mes.profit >= metaProfitMes ? "✓ Meta alcanzada" : "Por debajo de la meta", tone: mes.profit >= metaProfitMes ? "green" : "amber" },
-    { label: "COGS", valor: fmtMoney(mes.cogs), tone: "purple" },
-    { label: "GROSS PROFIT %", valor: fmtPct(mes.utilidadBrutaPct), tone: "green" },
-    { label: "CPV", valor: cpvMes != null ? fmtMoney(cpvMes, 2) : "—" },
-    { label: "Ventas / inversión manual", valor: roasMes != null ? `${roasMes.toFixed(1)}×` : "—" },
-  ];
-  const TONE_BG: Record<string, string> = {
-    amber: "bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30",
-    green: "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/30",
-  };
-  const TONE_TEXT: Record<string, string> = { green: "text-emerald-600", amber: "text-amber-600", red: "text-destructive", purple: "text-purple-600" };
-
-  return (
-    <Card>
-      <CardContent className="pt-5">
-        <div className="flex items-center gap-2.5 mb-4">
-          <NivelDot nivel={semaforo} />
-          <h3 className="font-semibold">{MESES_LARGOS[mes.mes - 1]} {mes.anio}</h3>
-          <NivelPill nivel={semaforo}>{semaforo === "verde" ? "Negocio sano" : semaforo === "ambar" ? "Ojo con el margen" : semaforo === "rojo" ? "En pérdida" : "Sin datos"}</NivelPill>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {cards.map((c) => (
-            <div key={c.label} className={cn("rounded-lg border p-3", c.tone && TONE_BG[c.tone])}>
-              <p className="text-[10px] text-muted-foreground uppercase">{c.label}</p>
-              <p className={cn("text-xl font-bold font-mono mt-1", c.tone && TONE_TEXT[c.tone])}>{c.valor}</p>
-              {c.sub && <p className="text-xs text-muted-foreground mt-0.5">{c.sub}</p>}
-            </div>
-          ))}
-        </div>
-        <div className="flex gap-2 mt-5">
-          <Button variant="outline" size="sm" disabled={mesSeleccionado <= 1} onClick={() => setMesSeleccionado((m) => m - 1)}>← Mes anterior</Button>
-          <Button variant="outline" size="sm" disabled={mesSeleccionado >= 12} onClick={() => setMesSeleccionado((m) => m + 1)}>Mes siguiente →</Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function VistaGastos({ gastosRaw, anio }: { gastosRaw: any[]; anio: number }) {
-  const totalesPorMes = MESES_CORTOS.map((_, i) =>
-    CATEGORIAS_GASTO.reduce((s, cat) => s + gastosRaw.filter((g) => g.mes === i + 1 && g.anio === anio && g.categoria === cat.value).reduce((x, g) => x + Number(g.monto || 0), 0), 0),
-  );
-  const granTotal = totalesPorMes.reduce((a, b) => a + b, 0);
-
-  return (
-    <div className="space-y-4">
-      <div className="rounded-lg border bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/30 p-3.5 text-sm text-blue-800 dark:text-blue-300">
-        💡 Gastos reales de `getGastos`, agrupados por categoría real (Planilla, Herramientas, Publicidad, Courier propio, Otro) y mes. Un mes en blanco significa que no hay gastos registrados ese mes — no hay proyección automática de recurrentes todavía.
-      </div>
-      <Card>
-        <CardHeader><CardTitle className="text-sm">Gastos por categoría × mes — {anio}</CardTitle></CardHeader>
-        <CardContent className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow><TableHead>Categoría</TableHead>{MESES_CORTOS.map((m) => <TableHead key={m} className="text-right">{m}</TableHead>)}<TableHead className="text-right">Año</TableHead></TableRow>
-            </TableHeader>
-            <TableBody>
-              {CATEGORIAS_GASTO.map((cat) => {
-                const valores = MESES_CORTOS.map((_, i) => gastosRaw.filter((g) => g.mes === i + 1 && g.anio === anio && g.categoria === cat.value).reduce((s, g) => s + Number(g.monto || 0), 0));
-                const total = valores.reduce((a, b) => a + b, 0);
-                return (
-                  <TableRow key={cat.value}>
-                    <TableCell className="font-semibold">{cat.label}</TableCell>
-                    {valores.map((v, i) => <TableCell key={i} className="text-right font-mono">{v ? fmtMoney(v) : "—"}</TableCell>)}
-                    <TableCell className="text-right font-mono font-bold">{fmtMoney(total)}</TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-            <TableFooter>
-              <TableRow className="bg-primary/10 font-bold">
-                <TableCell>TOTAL</TableCell>
-                {totalesPorMes.map((t, i) => <TableCell key={i} className="text-right font-mono">{fmtMoney(t)}</TableCell>)}
-                <TableCell className="text-right font-mono">{fmtMoney(granTotal)}</TableCell>
-              </TableRow>
-            </TableFooter>
-          </Table>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function VistaComparativo({ anioActual, mesesActual, mesesAnterior }: { anioActual: number; mesesActual: MesPnlReal[]; mesesAnterior: MesPnlReal[] }) {
-  const sum = (arr: MesPnlReal[], key: "ventas" | "profit") => arr.filter((m) => m.tieneDatos).reduce((a, m) => a + m[key], 0);
-  const avgMargen = (arr: MesPnlReal[]) => {
-    const con = arr.filter((m) => m.margenNetoPct != null);
-    return con.length ? con.reduce((a, m) => a + (m.margenNetoPct ?? 0), 0) / con.length : 0;
-  };
-
-  const vActual = sum(mesesActual, "ventas"), vAnterior = sum(mesesAnterior, "ventas");
-  const pActual = sum(mesesActual, "profit"), pAnterior = sum(mesesAnterior, "profit");
-  const mActual = avgMargen(mesesActual), mAnterior = avgMargen(mesesAnterior);
-
-  const delta = (a: number, b: number) => (b !== 0 ? `${a - b >= 0 ? "+" : ""}${(((a - b) / Math.abs(b)) * 100).toFixed(0)}%` : "—");
-
-  const filas = [
-    { kpi: "Ventas", anterior: fmtMoney(vAnterior), actual: fmtMoney(vActual), delta: delta(vActual, vAnterior) },
-    { kpi: "Profit", anterior: fmtMoney(pAnterior), actual: fmtMoney(pActual), delta: delta(pActual, pAnterior) },
-    { kpi: "Margen prom.", anterior: fmtPct(mAnterior), actual: fmtPct(mActual), delta: `${(mActual - mAnterior).toFixed(1)}pp` },
-  ];
-
-  const sinDatosAnterior = mesesAnterior.every((m) => !m.tieneDatos);
-
-  return (
-    <div className="space-y-4">
-      {sinDatosAnterior && (
-        <div className="rounded-lg border bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30 p-3.5 text-sm text-amber-800 dark:text-amber-300">
-          ⚠️ No hay pedidos ENTREGADO registrados en {anioActual - 1} — la comparación quedará en S/ 0 hasta que haya historial de ese año en POWIP.
-        </div>
+    <>
+      <LineChart
+        etiquetas={medidos.map((m) => MESES_CORTOS[m.mes - 1])}
+        series={series}
+        ariaLabel={`Ventas y utilidad operativa por mes de ${anio}`}
+        formatAxis={axisSoles}
+        formatValue={formatSoles}
+      />
+      {hayPerdida && (
+        <p className="mt-1 text-[11px] text-pc-text-muted">
+          Los meses con pérdida se dibujan en S/ 0; el monto exacto está en la tabla.
+        </p>
       )}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        {filas.map((c) => (
-          <Card key={c.kpi}>
-            <CardContent className="pt-4">
-              <p className="text-[10px] text-muted-foreground uppercase">{c.kpi}</p>
-              <div className="flex items-baseline gap-2 mt-1.5">
-                <span className="text-sm text-muted-foreground">{c.anterior}</span>
-                <span className="text-muted-foreground">→</span>
-                <span className="text-lg font-bold text-primary">{c.actual}</span>
-              </div>
-              <p className={cn("text-xs mt-1", c.delta.startsWith("+") ? "text-emerald-600" : c.delta.startsWith("-") ? "text-destructive" : "text-muted-foreground")}>{c.delta}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-      <Card>
-        <CardContent className="pt-5 overflow-x-auto">
-          <Table>
-            <TableHeader><TableRow><TableHead>KPI</TableHead><TableHead className="text-right">{anioActual - 1}</TableHead><TableHead className="text-right">{anioActual}</TableHead><TableHead className="text-right">Δ</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {filas.map((c) => (
-                <TableRow key={c.kpi}>
-                  <TableCell className="font-semibold">{c.kpi}</TableCell>
-                  <TableCell className="text-right font-mono text-muted-foreground">{c.anterior}</TableCell>
-                  <TableCell className="text-right font-mono">{c.actual}</TableCell>
-                  <TableCell className={cn("text-right font-mono", c.delta.startsWith("+") ? "text-emerald-600" : c.delta.startsWith("-") ? "text-destructive" : "")}>{c.delta}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+    </>
+  );
+}
+
+function TablaMeses({
+  filas,
+  total,
+  metas,
+  diasMedidos,
+  diasAnio,
+}: {
+  filas: FilaMes[];
+  total: Resultados;
+  metas: MetasAnuales;
+  diasMedidos: number;
+  diasAnio: number;
+}) {
+  const numero = (f: FilaMes, valor: (r: Resultados) => number) => (f.r ? valor(f.r) : null);
+  const columnas: ColumnaTabla<FilaMes>[] = [
+    {
+      id: "mes",
+      header: "Mes",
+      align: "left",
+      cell: (f) => (
+        <span className={cn(f.estado === "futuro" && "text-pc-text-muted")}>
+          <span className="capitalize">{MESES_LARGOS[f.mes - 1]}</span>
+          {f.tramo && <span className="ml-1 text-[11px] text-pc-text-muted">({f.tramo})</span>}
+          {f.estado === "futuro" && <span className="ml-1 text-[11px]">(por venir)</span>}
+        </span>
+      ),
+    },
+    {
+      id: "ventas",
+      header: "Ventas",
+      cell: (f) => soles(numero(f, (r) => r.ventas)),
+      sortValue: (f) => numero(f, (r) => r.ventas),
+    },
+    {
+      id: "costo",
+      header: "Costo",
+      cell: (f) => soles(numero(f, (r) => r.costoProducto)),
+      sortValue: (f) => numero(f, (r) => r.costoProducto),
+    },
+    {
+      id: "bruta",
+      header: "Utilidad bruta",
+      cell: (f) => soles(numero(f, (r) => r.utilidadBruta), true),
+      sortValue: (f) => numero(f, (r) => r.utilidadBruta),
+    },
+    {
+      id: "variables",
+      header: "Comisiones y envíos",
+      cell: (f) => soles(numero(f, (r) => r.comisiones + r.envios)),
+      sortValue: (f) => numero(f, (r) => r.comisiones + r.envios),
+    },
+    {
+      id: "publicidad",
+      header: "Publicidad",
+      cell: (f) => soles(numero(f, (r) => r.publicidad.total)),
+      sortValue: (f) => numero(f, (r) => r.publicidad.total),
+    },
+    {
+      id: "fijos",
+      header: "Gastos fijos",
+      cell: (f) => soles(numero(f, (r) => r.gastosFijos)),
+      sortValue: (f) => numero(f, (r) => r.gastosFijos),
+    },
+    {
+      id: "operativa",
+      header: "Utilidad operativa",
+      cell: (f) => soles(numero(f, (r) => r.utilidadOperativa), true),
+      sortValue: (f) => numero(f, (r) => r.utilidadOperativa),
+    },
+    {
+      id: "margen",
+      header: "Margen",
+      cell: (f) => (f.r && f.r.margenOperativo !== null ? formatPercent(f.r.margenOperativo, 1) : vacio),
+      sortValue: (f) => f.r?.margenOperativo ?? null,
+    },
+  ];
+
+  const objetivo = metas.margenObjetivoPct !== null ? metas.margenObjetivoPct / 100 : null;
+  const metaAlaFecha =
+    metas.ventasAnual !== null && diasAnio > 0 ? (metas.ventasAnual * diasMedidos) / diasAnio : null;
+
+  if (metas.ventasAnual !== null) {
+    columnas.push({
+      id: "vsMeta",
+      header: "Vs meta de ventas",
+      cell: (f) => {
+        if (!f.r || !f.metaVentas) return vacio;
+        const estado = evaluarAvance(f.r.ventas, f.metaVentas);
+        return (
+          <span className="inline-flex items-center gap-1.5" title={TEXTO_SEMAFORO[estado]}>
+            <NivelDot nivel={NIVEL[estado]} />
+            {formatPercent(f.r.ventas / f.metaVentas)}
+          </span>
+        );
+      },
+      sortValue: (f) => (f.r && f.metaVentas ? f.r.ventas / f.metaVentas : null),
+    });
+  }
+  if (objetivo !== null) {
+    columnas.push({
+      id: "vsMargen",
+      header: "Vs margen objetivo",
+      cell: (f) => {
+        if (!f.r) return vacio;
+        const estado = evaluarMargen(f.r.margenOperativo, objetivo);
+        return (
+          <span className="inline-flex items-center gap-1.5">
+            <NivelDot nivel={NIVEL[estado]} />
+            {TEXTO_SEMAFORO[estado]}
+          </span>
+        );
+      },
+    });
+  }
+
+  const footer: Partial<Record<string, ReactNode>> = {
+    mes: "Año a la fecha",
+    ventas: formatSoles(total.ventas),
+    costo: formatSoles(total.costoProducto),
+    bruta: soles(total.utilidadBruta, true),
+    variables: formatSoles(total.comisiones + total.envios),
+    publicidad: formatSoles(total.publicidad.total),
+    fijos: formatSoles(total.gastosFijos),
+    operativa: soles(total.utilidadOperativa, true),
+    margen: formatPercent(total.margenOperativo, 1),
+    vsMeta: metaAlaFecha ? formatPercent(total.ventas / metaAlaFecha) : SIN_DATO,
+    vsMargen: objetivo !== null ? TEXTO_SEMAFORO[evaluarMargen(total.margenOperativo, objetivo)] : "",
+  };
+
+  return (
+    <AdminTable
+      caption="Resultados por mes del año"
+      columns={columnas}
+      rows={filas}
+      getRowKey={(f) => f.clave}
+      footer={footer}
+      rowClassName={(f) => (f.estado === "futuro" ? "text-pc-text-muted" : undefined)}
+    />
+  );
+}
+
+// ---- Metas ------------------------------------------------------------------------------------
+
+interface FormMetas {
+  ventas: string;
+  utilidad: string;
+  margen: string;
+}
+
+const aTexto = (valor: number | null) => (valor === null ? "" : String(valor));
+
+function leerNumero(texto: string): number | null {
+  const limpio = texto.trim().replace(",", ".");
+  if (!limpio) return null;
+  const n = Number(limpio);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function MetasCard({
+  anio,
+  metas,
+  setMetas,
+  total,
+  proyeccion,
+  anioCerrado,
+}: {
+  anio: number;
+  metas: MetasAnuales;
+  setMetas: (metas: MetasAnuales) => void;
+  total: Resultados;
+  proyeccion: { ventas: number | null; utilidad: number | null };
+  anioCerrado: boolean;
+}) {
+  const [form, setForm] = useState<FormMetas | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const abrir = () => {
+    setError(null);
+    setForm({
+      ventas: aTexto(metas.ventasAnual),
+      utilidad: aTexto(metas.profitAnual),
+      margen: aTexto(metas.margenObjetivoPct),
+    });
+  };
+
+  const guardar = (evento: FormEvent) => {
+    evento.preventDefault();
+    if (!form) return;
+    const margen = leerNumero(form.margen);
+    if (margen !== null && margen >= 100) {
+      setError("El margen objetivo tiene que ser menor a 100 %.");
+      return;
+    }
+    setMetas({ ventasAnual: leerNumero(form.ventas), profitAnual: leerNumero(form.utilidad), margenObjetivoPct: margen });
+    setForm(null);
+  };
+
+  return (
+    <PanelCard
+      titulo={`Metas ${anio}`}
+      subtitulo="Se guardan solo en este navegador. Un campo vacío es «sin meta»."
+      acciones={
+        !form && (
+          <button type="button" className={claseBotonSecundario} onClick={abrir}>
+            <Pencil className="h-3.5 w-3.5" aria-hidden />
+            Editar metas
+          </button>
+        )
+      }
+    >
+      {form ? (
+        <form onSubmit={guardar} className="space-y-3" aria-label={`Editar metas ${anio}`}>
+          <CampoMeta
+            id="meta-ventas"
+            label="Ventas del año (S/)"
+            value={form.ventas}
+            onChange={(ventas) => setForm({ ...form, ventas })}
+          />
+          <CampoMeta
+            id="meta-utilidad"
+            label="Utilidad operativa del año (S/)"
+            value={form.utilidad}
+            onChange={(utilidad) => setForm({ ...form, utilidad })}
+          />
+          <CampoMeta
+            id="meta-margen"
+            label="Margen operativo objetivo (%)"
+            value={form.margen}
+            onChange={(margen) => setForm({ ...form, margen })}
+          />
+          {error && (
+            <p role="alert" className="text-xs text-pc-bad">
+              {error}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <button type="submit" className={claseBotonPrimario}>
+              Guardar metas
+            </button>
+            <button type="button" className={claseBotonSecundario} onClick={() => setForm(null)}>
+              Cancelar
+            </button>
+          </div>
+        </form>
+      ) : (
+        <dl className="space-y-4">
+          <AvanceMeta
+            label="Ventas"
+            logrado={total.ventas}
+            meta={metas.ventasAnual}
+            proyectado={anioCerrado ? total.ventas : proyeccion.ventas}
+            anioCerrado={anioCerrado}
+          />
+          <AvanceMeta
+            label="Utilidad operativa"
+            logrado={total.utilidadOperativa}
+            meta={metas.profitAnual}
+            proyectado={anioCerrado ? total.utilidadOperativa : proyeccion.utilidad}
+            anioCerrado={anioCerrado}
+          />
+          <MargenMeta margen={total.margenOperativo} objetivoPct={metas.margenObjetivoPct} />
+        </dl>
+      )}
+    </PanelCard>
+  );
+}
+
+function CampoMeta({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (valor: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={id} className="text-xs font-semibold text-pc-text-muted">
+        {label}
+      </label>
+      <input
+        id={id}
+        type="number"
+        min="0"
+        step="any"
+        inputMode="decimal"
+        placeholder="Sin meta"
+        className={cn(claseInput, "w-full")}
+        value={value}
+        onChange={(evento) => onChange(evento.target.value)}
+      />
     </div>
+  );
+}
+
+function SinMeta({ label }: { label: string }) {
+  return <Dato label={label} valor={<span className="text-pc-text-muted">Sin meta</span>} sub="Cárgala con «Editar metas»" />;
+}
+
+function AvanceMeta({
+  label,
+  logrado,
+  meta,
+  proyectado,
+  anioCerrado,
+}: {
+  label: string;
+  logrado: number;
+  meta: number | null;
+  proyectado: number | null;
+  anioCerrado: boolean;
+}) {
+  if (meta === null) return <SinMeta label={label} />;
+  const avance = logrado / meta;
+  const estado = evaluarAvance(proyectado, meta);
+  return (
+    <div>
+      <Dato
+        label={label}
+        valor={`${formatPercent(avance)} de la meta`}
+        sub={`${formatSoles(logrado)} de ${formatSoles(meta)}`}
+      />
+      <div
+        role="progressbar"
+        aria-label={`Avance de ${label.toLowerCase()} contra la meta`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(Math.min(1, Math.max(0, avance)) * 100)}
+        className="mt-1.5 h-2 overflow-hidden rounded-md bg-pc-border-soft"
+      >
+        <span
+          className="block h-full rounded-md bg-pc-primary"
+          style={{ width: `${Math.min(1, Math.max(0, avance)) * 100}%` }}
+        />
+      </div>
+      <p className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-pc-text-muted">
+        <NivelPill nivel={NIVEL[estado]}>{TEXTO_SEMAFORO[estado]}</NivelPill>
+        {anioCerrado
+          ? "Año cerrado"
+          : `A este ritmo cierra en ${formatSoles(proyectado)} (${formatPercent(proyectado !== null ? proyectado / meta : null)} de la meta)`}
+      </p>
+    </div>
+  );
+}
+
+function MargenMeta({ margen, objetivoPct }: { margen: number | null; objetivoPct: number | null }) {
+  if (objetivoPct === null) return <SinMeta label="Margen operativo" />;
+  const estado = evaluarMargen(margen, objetivoPct / 100);
+  return (
+    <div>
+      <Dato
+        label="Margen operativo"
+        valor={formatPercent(margen, 1)}
+        sub={`Objetivo ${formatPercent(objetivoPct / 100, 1)}`}
+      />
+      <p className="mt-1.5">
+        <NivelPill nivel={NIVEL[estado]}>{TEXTO_SEMAFORO[estado]}</NivelPill>
+      </p>
+    </div>
+  );
+}
+
+// ---- Comparación ------------------------------------------------------------------------------
+
+interface FilaComparada {
+  clave: string;
+  concepto: string;
+  actual: number | null;
+  anterior: number | null;
+  tipo: "soles" | "margen";
+  sentido: "mas_es_mejor" | "menos_es_mejor";
+}
+
+function Comparativo({ anio, actual, anterior }: { anio: number; actual: Resultados; anterior: Resultados }) {
+  const filas: FilaComparada[] = [
+    { clave: "ventas", concepto: "Ventas", actual: actual.ventas, anterior: anterior.ventas, tipo: "soles", sentido: "mas_es_mejor" },
+    {
+      clave: "costo",
+      concepto: "Costo de producto",
+      actual: actual.costoProducto,
+      anterior: anterior.costoProducto,
+      tipo: "soles",
+      sentido: "menos_es_mejor",
+    },
+    {
+      clave: "bruta",
+      concepto: "Utilidad bruta",
+      actual: actual.utilidadBruta,
+      anterior: anterior.utilidadBruta,
+      tipo: "soles",
+      sentido: "mas_es_mejor",
+    },
+    {
+      clave: "publicidad",
+      concepto: "Publicidad",
+      actual: actual.publicidad.total,
+      anterior: anterior.publicidad.total,
+      tipo: "soles",
+      sentido: "menos_es_mejor",
+    },
+    {
+      clave: "fijos",
+      concepto: "Gastos fijos",
+      actual: actual.gastosFijos,
+      anterior: anterior.gastosFijos,
+      tipo: "soles",
+      sentido: "menos_es_mejor",
+    },
+    {
+      clave: "operativa",
+      concepto: "Utilidad operativa",
+      actual: actual.utilidadOperativa,
+      anterior: anterior.utilidadOperativa,
+      tipo: "soles",
+      sentido: "mas_es_mejor",
+    },
+    {
+      clave: "margen",
+      concepto: "Margen operativo",
+      actual: actual.margenOperativo,
+      anterior: anterior.margenOperativo,
+      tipo: "margen",
+      sentido: "mas_es_mejor",
+    },
+  ];
+
+  const valor = (f: FilaComparada, v: number | null) =>
+    f.tipo === "margen" ? formatPercent(v, 1) : soles(v, f.clave === "operativa" || f.clave === "bruta");
+
+  const variacion = (f: FilaComparada): ReactNode => {
+    if (f.tipo === "margen") {
+      if (f.actual === null || f.anterior === null) return vacio;
+      const puntos = (f.actual - f.anterior) * 100;
+      return (
+        <span className={cn(puntos > 0 ? "text-pc-ok" : puntos < 0 ? "text-pc-bad" : undefined)}>
+          {`${puntos > 0 ? "+" : puntos < 0 ? "−" : ""}${Math.abs(puntos).toFixed(1)} pts`}
+        </span>
+      );
+    }
+    const delta = calcularDelta(f.actual, f.anterior, f.sentido);
+    if (delta.variacion === null) return vacio;
+    return (
+      <span className={cn(delta.tono === "bueno" && "text-pc-ok", delta.tono === "malo" && "text-pc-bad")}>
+        {`${delta.variacion > 0 ? "+" : delta.variacion < 0 ? "−" : ""}${formatPercent(Math.abs(delta.variacion), 1)}`}
+      </span>
+    );
+  };
+
+  return (
+    <AdminTable
+      caption={`Año ${anio} a la fecha contra ${anio - 1} a la misma fecha`}
+      ordenable={false}
+      columns={[
+        { id: "concepto", header: "Concepto", align: "left", cell: (f) => f.concepto },
+        { id: "actual", header: String(anio), cell: (f) => valor(f, f.actual) },
+        { id: "anterior", header: String(anio - 1), cell: (f) => valor(f, f.anterior) },
+        { id: "variacion", header: "Variación", cell: variacion },
+      ]}
+      rows={filas}
+      getRowKey={(f) => f.clave}
+    />
   );
 }
