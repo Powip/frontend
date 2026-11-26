@@ -1,5 +1,7 @@
 import type { Order } from "@/features/sales/models/order";
 import { buildSunatDocumentFromSale } from "../build-sunat-document-from-sale";
+import { findLinesWithoutValue } from "../find-lines-without-value";
+import { isGiftCandidate } from "../gift-lines";
 
 type SaleItem = { sku: string; quantity: number; unitPrice: number; discountAmount?: number };
 
@@ -107,7 +109,7 @@ describe("buildSunatDocumentFromSale — descuentos", () => {
     expect(grandTotalOf(order)).toBe(100);
   });
 
-  it("envío gratis: el descuento está solo en la cabecera y va a la línea de envío", () => {
+  it("envío gratis: la línea de envío no va en el comprobante y no bloquea la emisión", () => {
     // Shopify: total_shipping_price_set 13, total_discounts 13, total_price 100.
     const order = sale({
       items: [{ sku: "A", quantity: 1, unitPrice: 100 }],
@@ -117,13 +119,69 @@ describe("buildSunatDocumentFromSale — descuentos", () => {
 
     const document = buildSunatDocumentFromSale(order);
 
+    // Lo que el cliente pagó: solo el producto.
     expect(document.totals.grandTotal).toBe(100);
-    const delivery = document.items.find((item) => item.sku === "DELIVERY");
-    expect(delivery).toBeDefined();
-    // El envío queda en cero: el importe sin IGV menos el descuento sin IGV.
-    expect(round2(delivery!.subtotal - delivery!.discountAmount)).toBe(0);
+    expect(document.totals.subtotal).toBe(84.75);
+    expect(document.totals.taxTotal).toBe(15.25);
+    expect(document.totals.discountTotal).toBe(0);
+    // Sin línea de envío en S/ 0.00 (SUNAT la rechaza con el error 3105).
+    expect(document.items.map((item) => item.sku)).toEqual(["A"]);
+    expect(findLinesWithoutValue(document.items)).toEqual([]);
     // Los productos conservan su precio completo.
     expect(document.items[0].discountAmount).toBe(0);
+  });
+
+  it("envío con cobro sigue igual: va como línea con su precio", () => {
+    const order = sale({
+      items: [{ sku: "A", quantity: 1, unitPrice: 100 }],
+      shippingTotal: 10,
+    });
+
+    const document = buildSunatDocumentFromSale(order);
+    const delivery = document.items.find((item) => item.sku === "DELIVERY");
+
+    expect(delivery).toBeDefined();
+    expect(round2(delivery!.subtotal - delivery!.discountAmount)).toBe(8.47);
+    expect(document.totals.grandTotal).toBe(110);
+  });
+
+  it("envío con descuento parcial sigue como línea con lo que se cobró", () => {
+    const order = sale({
+      items: [{ sku: "A", quantity: 1, unitPrice: 100 }],
+      shippingTotal: 10,
+      discountTotal: 4,
+    });
+
+    const document = buildSunatDocumentFromSale(order);
+    const delivery = document.items.find((item) => item.sku === "DELIVERY");
+
+    expect(delivery).toBeDefined();
+    expect(round2((delivery!.subtotal - delivery!.discountAmount) * 1.18)).toBe(6);
+    expect(document.totals.grandTotal).toBe(106);
+    expect(findLinesWithoutValue(document.items)).toEqual([]);
+  });
+
+  it("envío gratis con un producto en 0: el producto sigue las reglas de regalo y el envío no se pregunta", () => {
+    const order = sale({
+      items: [
+        { sku: "A", quantity: 1, unitPrice: 100 },
+        { sku: "REGALO", quantity: 1, unitPrice: 0 },
+      ],
+      shippingTotal: 10,
+      discountTotal: 10,
+    });
+
+    const document = buildSunatDocumentFromSale(order);
+
+    expect(document.items.map((item) => item.sku)).toEqual(["A", "REGALO"]);
+    expect(document.items.filter(isGiftCandidate).map((item) => item.sku)).toEqual(["REGALO"]);
+    expect(document.totals.grandTotal).toBe(100);
+  });
+
+  it("venta solo con envío gratis queda sin líneas (no hay nada que facturar)", () => {
+    const order = sale({ items: [], shippingTotal: 10, discountTotal: 10 });
+
+    expect(buildSunatDocumentFromSale(order).items).toEqual([]);
   });
 
   it("descuento de pedido sin asignar a líneas se reparte entre los productos y el total cuadra", () => {

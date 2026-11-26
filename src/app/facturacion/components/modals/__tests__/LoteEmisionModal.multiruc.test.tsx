@@ -269,6 +269,28 @@ describe("LoteEmisionModal — ventas con una línea en S/ 0.00", () => {
     ).toEqual(["order-1"]);
   });
 
+  it("una venta con envío gratis entra al lote sin la línea de envío", async () => {
+    const saleFreeShipping = {
+      ...sale,
+      id: "order-3",
+      orderNumber: "ORD-3",
+      shippingTotal: 10,
+      discountTotal: 10,
+    } as unknown as Order;
+
+    render(<LoteEmisionModal isOpen onClose={jest.fn()} sales={[saleFreeShipping]} />);
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Emitir 1 comprobantes/i }));
+
+    expect(mutateAsync).toHaveBeenCalledTimes(1);
+    const [document] = mutateAsync.mock.calls[0][0].documents;
+    expect(document.orderId).toBe("order-3");
+    expect(document.items.map((item: { sku: string }) => item.sku)).toEqual(["SKU-1"]);
+    expect(document.totals.grandTotal).toBe(118);
+  });
+
   it("si todas las ventas tienen una línea en cero no deja emitir nada", () => {
     render(<LoteEmisionModal isOpen onClose={jest.fn()} sales={[saleWithGift]} />);
 

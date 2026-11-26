@@ -1,6 +1,7 @@
 import type { CreateSunatDocumentsRequestDto } from "../dto/create-sunat-documents-request.dto";
 import { SUNAT_DOCUMENT_TYPES } from "../enums/sunat-document.enums";
 import type { CreateSunatDocumentsFormValues } from "../schemas/create-sunat-documents.schema";
+import { isGiftTaxType } from "../utils/gift-lines";
 
 // SUNAT's UBL 2.1 schema requires cac:PartyLegalEntity/cbc:RegistrationName to be
 // non-empty AND format-valid on every document, even an anonymous boleta with no
@@ -76,6 +77,11 @@ export function toCreateSunatDocumentsRequestDto(
         discountAmount: item.discountAmount,
         unitCode: item.unitCode,
         taxType: item.taxType,
+        // Solo los regalos llevan valor referencial; el backend lo rechaza en
+        // una línea cobrada.
+        ...(isGiftTaxType(item.taxType) && item.referenceUnitValue !== undefined
+          ? { referenceUnitValue: item.referenceUnitValue }
+          : {}),
       })),
     })),
   };

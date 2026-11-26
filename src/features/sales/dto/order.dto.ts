@@ -62,6 +62,9 @@ export interface OrderItemResponseDto {
   discountAmount: string;
 
   isPromoItem: boolean;
+  isGift?: boolean;
+  /** DECIMAL: llega como texto. */
+  giftValue?: string | number | null;
 
   addedByUserId: string | null;
   addedAt: string | null;

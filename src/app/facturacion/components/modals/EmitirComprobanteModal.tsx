@@ -5,6 +5,7 @@ import { AlertCircle, AlertTriangle, CheckCircle2, FileText, Loader2 } from "luc
 import { useEffect, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { EmisionPipeline } from "@/app/facturacion/components/EmisionPipeline";
+import { GiftChoicePanel } from "@/app/facturacion/components/GiftChoicePanel";
 import { IssuerSelectField } from "@/app/facturacion/components/IssuerSelectField";
 import { ItemsEditTable } from "@/app/facturacion/components/ItemsEditTable";
 import { VerifyIdentityButton } from "@/app/facturacion/components/VerifyIdentityButton";
@@ -628,6 +629,8 @@ export default function EmitirComprobanteModal({
                       )}
                     </div>
 
+                    <GiftChoicePanel />
+
                     <FormField
                       control={form.control}
                       name="documents.0.items"
@@ -655,7 +658,7 @@ export default function EmitirComprobanteModal({
                         </span>
                         SUNAT rechaza el comprobante completo cuando una línea no tiene valor (error
                         3105) y el número se pierde. Ponle su valor a esa línea o quítala con el
-                        ícono de papelera.
+                        ícono de papelera. Si es un regalo, elige arriba cómo mandarlo.
                       </div>
                     )}
 

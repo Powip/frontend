@@ -34,6 +34,22 @@ const sunatDocumentLineItemSchema = z.object({
     .nonnegative("Discount amount cannot be negative"),
   unitCode: z.enum(UNIT_CODES),
   taxType: z.enum(SUNAT_TAX_AFFECTATION_TYPES),
+  /**
+   * Regalo (13/31): valor referencial unitario SIN IGV (precio normal / 1.18).
+   * SUNAT lo pide como precio tipo 02; lo cobrado queda en 0.
+   */
+  referenceUnitValue: z.number().nonnegative().optional(),
+  /**
+   * Solo pantalla, nunca se envía: lo que la línea traía antes de marcarla
+   * como regalo, para poder volver atrás si el usuario cambia de opción.
+   */
+  giftOrigin: z
+    .object({
+      unitPrice: z.number(),
+      discountAmount: z.number(),
+      taxType: z.enum(SUNAT_TAX_AFFECTATION_TYPES),
+    })
+    .optional(),
 });
 
 const sunatDocumentTotalsSchema = z.object({

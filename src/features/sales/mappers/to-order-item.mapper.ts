@@ -23,6 +23,9 @@ export function toOrderItem(dto: OrderItemResponseDto): OrderItem {
 
     isPromoItem: dto.isPromoItem,
 
+    isGift: dto.isGift ?? false,
+    giftValue: dto.giftValue == null ? null : Number(dto.giftValue),
+
     addedByUserId: dto.addedByUserId,
     addedAt: toDate(dto.addedAt),
 
