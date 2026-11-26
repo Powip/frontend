@@ -1,7 +1,7 @@
 /** @jest-environment node */
 // Un script cuya ruta contiene «publicidad» lo cortan los bloqueadores de anuncios
 // (la página de Meta Ads quedaba en «Cargando...» en producción).
-const nextConfig = require("../../next.config");
+import nextConfig from "../../next.config";
 
 const build = (chunkName: string, options = { isServer: false, dev: false }) => {
   const config = nextConfig.webpack(
