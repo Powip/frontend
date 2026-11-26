@@ -1,191 +1,340 @@
 "use client";
 
-import { AdvertisingCompanySpend } from "@/components/advertising/AdvertisingCompanySpend";
-
 /**
- * Flujo de Caja vs P&L y adelantos COD — §12 doc técnica.
+ * Flujo de caja estimado (FEAT-34: C8, M3, M6, M12).
  *
- * CONECTADO A DATOS REALES: Ventas entregadas, COGS, gastos fijos y costo de
- * courier por mes salen de `useAdminYearPnl` (`_lib/useMonthlyPnl.ts`),
- * agregando pedidos/gastos reales del año en curso. Adelantos pendientes
- * hoy = suma de pagos PAID en pedidos que todavía no llegan a ENTREGADO
- * (mismo criterio que `operaciones/liquidaciones`).
+ * Antes era un estado de resultados con otro nombre (ventas − costo de lo vendido − gastos), del año de hoy, y perdía
+ * la publicidad cargada en Gastos (la restaba de los gastos y sumaba la «inversión manual» del navegador).
  *
- * SOLUCIÓN PUENTE (localStorage, sin backend): la fila "Publicidad" suma la
- * inversión registrada en Pauta por canal por mes (`usePautaEntries` +
- * `inversionPorMes`, `_lib/pautaStorage.ts`) — guardada en este dispositivo.
- * `gastosFijos` de `useAdminYearPnl` suma TODAS las categorías de
- * `getGastos`, incluida "Publicidad" si alguien la carga ahí manualmente en
- * vez de en Pauta — para no contar ese gasto dos veces (una en "Gastos fijos
- * + operativos", otra en la fila "Publicidad"), acá se resta del total antes
- * de sumar la fila de Pauta.
- *
- * SIGUE SIN DATO REAL:
- * - El concepto central del doc —`adelantos_pendientes` como pasivo que se
- *   revierte si el pedido NO_ENTREGADO/CANCELADO— no se puede modelar
- *   históricamente mes a mes: `OrderStatus` no distingue esos estados de
- *   `ANULADO`, y no hay ledger persistente. Por eso "Adelantos" se muestra
- *   como una foto de HOY, no como fila mensual del histórico.
- * - IGV/IR estimado, comisión POWIP y merma no están incluidos en el profit
- *   mensual de esta vista (sí lo están en Resumen/Gastos) — para no sumar
- *   ~12 llamadas más a `getShrinkageSummary` por carga de página.
+ * Ahora, mes a mes del año del periodo elegido (`useResultadosAnuales`):
+ * - Entradas = ventas entregadas del mes (como si se cobraran ese mismo mes).
+ * - Salidas = compra de mercadería (Gastos › categoría INVERSION del mes) + gastos fijos + publicidad
+ *   (`resultados.publicidad.total`: cuentas conectadas + Gastos › Publicidad) + envíos + comisiones de canal.
+ * - No se resta el costo de producto: la compra de mercadería ya es esa salida (sería contarla dos veces).
+ * - No incluye adelantos, lo que el courier todavía no liquidó, préstamos ni impuestos.
  */
 
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { format, subDays } from "date-fns";
-import { useAuth } from "@/contexts/AuthContext";
-import { getOrdersByCompany } from "@/api/Ventas";
-import { useAdminYearPnl } from "../_lib/useMonthlyPnl";
-import { usePautaEntries, inversionPorMes } from "../_lib/pautaStorage";
-import { paidAmount } from "../_lib/realData";
-import { MESES_CORTOS } from "../_mock/data";
-import { fmtMoney } from "../_lib/format";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Skeleton } from "@/components/ui/skeleton";
+import { type ReactNode, useMemo } from "react";
+import { LineChart } from "@/components/panel-control/charts/LineChart";
+import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
+import type { IGastoOperativo } from "@/interfaces/IAdmin";
+import { axisSoles } from "@/features/panel-control/shared/utils/chart";
 import { cn } from "@/lib/utils";
+import {
+  AdminTable,
+  Aviso,
+  type ColumnaTabla,
+  formatSoles,
+  KpiCard,
+  PanelCard,
+  PanelError,
+  PanelSkeleton,
+  SIN_DATO,
+} from "../_components/ui";
+import { diasDelMes, diasEntre, etiquetaPeriodo, MESES_CORTOS, MESES_LARGOS, partes } from "../_lib/periodo";
+import type { EstadoPublicidad } from "../_lib/publicidad";
+import { type ResultadoMes, useAdminContexto, useResultadosAnuales } from "../_lib/useResultados";
 
-const STALE = 5 * 60 * 1000;
+interface FilaFlujo {
+  clave: string;
+  mes: number;
+  futuro: boolean;
+  tramo: string | null;
+  entradas: number;
+  compra: number;
+  fijos: number;
+  publicidad: number;
+  envios: number;
+  comisiones: number;
+  salidas: number;
+  neto: number;
+  acumulado: number;
+  conDatos: boolean;
+}
+
+/** Compra de mercadería cargada en Gastos para cada mes del año (monto completo del mes, sin repartir). */
+function comprasPorMes(gastos: IGastoOperativo[], anio: number) {
+  const meses = Array<number>(12).fill(0);
+  for (const gasto of gastos) {
+    if (gasto.categoria !== "INVERSION" || Number(gasto.anio) !== anio) continue;
+    const mes = Number(gasto.mes);
+    if (mes >= 1 && mes <= 12) meses[mes - 1] += Number(gasto.monto) || 0;
+  }
+  return meses;
+}
+
+function armarFilas(meses: ResultadoMes[], compras: number[], hoy: string): FilaFlujo[] {
+  let acumulado = 0;
+  return meses.map((m) => {
+    const clave = `${m.anio}-${String(m.mes).padStart(2, "0")}`;
+    if (!m.rango) {
+      return {
+        clave,
+        mes: m.mes,
+        futuro: true,
+        tramo: null,
+        entradas: 0,
+        compra: 0,
+        fijos: 0,
+        publicidad: 0,
+        envios: 0,
+        comisiones: 0,
+        salidas: 0,
+        neto: 0,
+        acumulado,
+        conDatos: false,
+      };
+    }
+    const r = m.resultados;
+    const compra = compras[m.mes - 1] ?? 0;
+    const salidas = compra + r.gastosFijos + r.publicidad.total + r.envios + r.comisiones;
+    const neto = r.ventas - salidas;
+    acumulado += neto;
+    const parcial = diasEntre(m.rango.desde, m.rango.hasta) < diasDelMes(m.anio, m.mes);
+    return {
+      clave,
+      mes: m.mes,
+      futuro: false,
+      tramo: parcial ? (m.rango.hasta === hoy ? "hasta hoy" : `hasta el ${partes(m.rango.hasta)[2]}`) : null,
+      entradas: r.ventas,
+      compra,
+      fijos: r.gastosFijos,
+      publicidad: r.publicidad.total,
+      envios: r.envios,
+      comisiones: r.comisiones,
+      salidas,
+      neto,
+      acumulado,
+      conDatos: m.tieneDatos || compra > 0 || r.publicidad.total > 0 || r.envios > 0,
+    };
+  });
+}
+
+const vacio = <span className="text-pc-text-muted">{SIN_DATO}</span>;
+
+function soles(valor: number, resaltar = false): ReactNode {
+  return <span className={cn(resaltar && valor < 0 && "text-pc-bad")}>{formatSoles(valor)}</span>;
+}
 
 export default function FlujoDeCajaPage() {
-  const { auth } = useAuth();
-  const companyId = auth?.company?.id ?? "";
-  const token = auth?.accessToken ?? "";
-  const storeIds = useMemo(() => (auth?.company?.stores ?? []).map((s) => s.id), [auth?.company?.stores]);
-  const anio = new Date().getFullYear();
+  const { fromDate, toDate } = useAdminPeriod();
+  const { hoy } = useAdminContexto();
+  const anio = partes(toDate)[0];
+  const datos = useResultadosAnuales(anio);
 
-  const { meses, isLoading: loadingPnl, gastosRaw } = useAdminYearPnl(companyId, anio, storeIds, token);
-  const [pautaEntries] = usePautaEntries(companyId);
-  const egresosPublicidad = useMemo(() => inversionPorMes(pautaEntries, anio), [pautaEntries, anio]);
+  const compras = useMemo(() => comprasPorMes(datos.gastosCrudos ?? [], anio), [datos.gastosCrudos, anio]);
+  const filas = armarFilas(datos.meses, compras, hoy);
+  const medidas = filas.filter((f) => !f.futuro);
+  const totales = medidas.reduce(
+    (t, f) => ({
+      entradas: t.entradas + f.entradas,
+      compra: t.compra + f.compra,
+      fijos: t.fijos + f.fijos,
+      publicidad: t.publicidad + f.publicidad,
+      envios: t.envios + f.envios,
+      comisiones: t.comisiones + f.comisiones,
+      salidas: t.salidas + f.salidas,
+      neto: t.neto + f.neto,
+    }),
+    { entradas: 0, compra: 0, fijos: 0, publicidad: 0, envios: 0, comisiones: 0, salidas: 0, neto: 0 },
+  );
+  const anioFuturo = datos.hasta < datos.desde;
 
-  const gastosPublicidadEnGastos = useMemo(() => {
-    const out = Array(12).fill(0);
-    for (const g of gastosRaw as any[]) {
-      if (g.categoria === "PUBLICIDAD" && g.anio === anio) out[g.mes - 1] += Number(g.monto || 0);
-    }
-    return out;
-  }, [gastosRaw, anio]);
-
-  const hoy = new Date();
-  const desde = format(subDays(hoy, 45), "yyyy-MM-dd");
-  const hasta = format(hoy, "yyyy-MM-dd");
-  const { data: ordersRecientes = [], isLoading: loadingAdelantos } = useQuery({
-    queryKey: ["admin-flujo-adelantos", companyId, desde, hasta],
-    queryFn: () => getOrdersByCompany(companyId, desde, hasta),
-    enabled: !!companyId,
-    staleTime: STALE,
-  });
-
-  const adelantosHoy = useMemo(() => {
-    return (ordersRecientes as any[])
-      .filter((o) => o.status !== "ENTREGADO" && o.status !== "ANULADO")
-      .reduce((sum, o) => sum + paidAmount(o), 0);
-  }, [ordersRecientes]);
-
-  const pedidosConAdelanto = useMemo(
-    () => (ordersRecientes as any[]).filter((o) => o.status !== "ENTREGADO" && o.status !== "ANULADO" && paidAmount(o) > 0).length,
-    [ordersRecientes],
+  const rotulo = (
+    <p className="text-xs text-pc-text-muted">
+      Año <span className="font-semibold text-pc-text">{anio}</span>: el del último día del periodo elegido (
+      {etiquetaPeriodo(fromDate, toDate)}). Para ver otro año, cambia el periodo arriba.
+    </p>
   );
 
-  const ingresos = meses.map((m) => m.ventas);
-  const totalIngresos = ingresos;
-  const egresosFijos = meses.map((m, i) => m.gastosFijos - gastosPublicidadEnGastos[i]);
-  const egresosCourier = meses.map((m) => m.courierCost);
-  const egresosCogs = meses.map((m) => m.cogs);
-  const totalEgresos = meses.map((m, i) => egresosFijos[i] + m.courierCost + m.cogs + egresosPublicidad[i]);
-  const flujoNeto = meses.map((m, i) => totalIngresos[i] - totalEgresos[i]);
+  const nota = (
+    <Aviso tono="info" titulo="Flujo de caja estimado">
+      <p>
+        <b>Entradas</b>: las ventas entregadas de cada mes, como si se cobraran ese mismo mes. <b>Salidas</b>: la compra
+        de mercadería, los gastos fijos y la publicidad cargados en Gastos (más el consumo de las cuentas de publicidad
+        conectadas), los envíos y las comisiones de canal. El mes en curso se mide hasta hoy.
+      </p>
+      <p className="mt-1">
+        No se resta el costo de lo vendido: la compra de mercadería ya es esa salida y sería contarla dos veces. No
+        incluye adelantos de pedidos que todavía no se entregaron, lo que el courier aún no te liquidó, préstamos ni
+        impuestos.
+      </p>
+    </Aviso>
+  );
 
-  const loading = loadingPnl || loadingAdelantos;
-  if (loading) {
-    return <div className="p-8 space-y-4">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)}</div>;
+  if (anioFuturo) {
+    return (
+      <div className="space-y-3.5">
+        {rotulo}
+        <Aviso tono="info" titulo={`${anio} todavía no empezó`}>
+          No hay meses cerrados ni en curso para mostrar.
+        </Aviso>
+      </div>
+    );
   }
 
+  if (datos.error) {
+    return (
+      <div className="space-y-3.5">
+        {rotulo}
+        <PanelError error={datos.error as Error} />
+      </div>
+    );
+  }
+
+  if (datos.cargando) {
+    return (
+      <div className="space-y-3.5">
+        {rotulo}
+        <PanelSkeleton variant="kpis" label="flujo de caja" />
+        <PanelSkeleton variant="tabla" label="flujo por mes" />
+      </div>
+    );
+  }
+
+  const columnas: ColumnaTabla<FilaFlujo>[] = [
+    {
+      id: "mes",
+      header: "Mes",
+      align: "left",
+      cell: (f) => (
+        <span>
+          <span className="capitalize">{MESES_LARGOS[f.mes - 1]}</span>
+          {f.tramo && <span className="ml-1 text-[11px] text-pc-text-muted">({f.tramo})</span>}
+          {f.futuro && <span className="ml-1 text-[11px] text-pc-text-muted">(por venir)</span>}
+        </span>
+      ),
+    },
+    ...(
+      [
+        ["entradas", "Entradas"],
+        ["compra", "Compra de mercadería"],
+        ["fijos", "Gastos fijos"],
+        ["publicidad", "Publicidad"],
+        ["envios", "Envíos"],
+        ["comisiones", "Comisiones"],
+        ["salidas", "Total salidas"],
+      ] as const
+    ).map(
+      ([id, header]): ColumnaTabla<FilaFlujo> => ({
+        id,
+        header,
+        cell: (f) => (f.futuro || !f.conDatos ? vacio : formatSoles(f[id])),
+        sortValue: (f) => (f.futuro ? null : f[id]),
+      }),
+    ),
+    {
+      id: "neto",
+      header: "Neto del mes",
+      cell: (f) => (f.futuro || !f.conDatos ? vacio : soles(f.neto, true)),
+      sortValue: (f) => (f.futuro ? null : f.neto),
+    },
+    {
+      id: "acumulado",
+      header: "Acumulado",
+      cell: (f) => (f.futuro ? vacio : soles(f.acumulado, true)),
+    },
+  ];
+
+  const sinCompras = totales.compra === 0;
+  const graficables = medidas;
+
   return (
-    <div className="p-8 space-y-6">
-      <AdvertisingCompanySpend from={`${anio}-01-01`} to={`${anio}-12-31`} />
-      <div>
-        <h2 className="text-lg font-bold">Flujo de Caja</h2>
-        <p className="text-xs text-muted-foreground mt-0.5">Ventas entregadas, COGS y gastos por mes — {anio}</p>
+    <div className="space-y-3.5">
+      {rotulo}
+      {nota}
+      <NotaPublicidad estado={datos.publicidad.estado} />
+      {sinCompras && (
+        <Aviso tono="warn" titulo={`No hay compras de mercadería cargadas en ${anio}`}>
+          Carga lo que le pagas a tus proveedores en Costos › Gastos y costos, categoría «Compra de mercadería», para
+          que el flujo lo descuente. Sin eso, el neto sale más alto de lo real.
+        </Aviso>
+      )}
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <KpiCard
+          label="Entradas"
+          value={formatSoles(totales.entradas)}
+          sub={`Ventas entregadas · ${etiquetaPeriodo(datos.desde, datos.hasta)}`}
+        />
+        <KpiCard
+          label="Salidas"
+          value={formatSoles(totales.salidas)}
+          sub="Compra de mercadería, gastos fijos, publicidad, envíos y comisiones"
+        />
+        <KpiCard
+          label="Neto del año"
+          value={soles(totales.neto, true)}
+          sub="Entradas − salidas, acumulado a la fecha"
+        />
+        <KpiCard
+          label="Compra de mercadería"
+          value={sinCompras ? SIN_DATO : formatSoles(totales.compra)}
+          sub="Lo cargado en Gastos › Compra de mercadería"
+        />
       </div>
 
-      <div className="rounded-lg border bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30 p-3.5 text-xs text-amber-800 dark:text-amber-300">
-        Publicidad manual estimada; no confirma pagos. No incluye impuestos, comisión Powip ni merma mensual.
-      </div>
+      <PanelCard titulo="Entradas y salidas por mes" subtitulo={`Meses medidos de ${anio}; el mes en curso, hasta hoy`}>
+        {graficables.length < 2 ? (
+          <p className="text-xs text-pc-text-muted">El gráfico aparece desde el segundo mes del año.</p>
+        ) : (
+          <LineChart
+            etiquetas={graficables.map((f) => MESES_CORTOS[f.mes - 1])}
+            series={[
+              { id: "entradas", nombre: "Entradas", color: "var(--pc-series-1)", valores: graficables.map((f) => f.entradas) },
+              { id: "salidas", nombre: "Salidas", color: "var(--pc-series-2)", valores: graficables.map((f) => f.salidas) },
+            ]}
+            ariaLabel={`Entradas y salidas de caja por mes de ${anio}`}
+            formatAxis={axisSoles}
+            formatValue={formatSoles}
+          />
+        )}
+      </PanelCard>
 
-      <Card className="bg-amber-50/40 dark:bg-amber-500/5 border-amber-200 dark:border-amber-500/20">
-        <CardHeader><CardTitle className="text-sm">💰 Adelantos pendientes — hoy</CardTitle></CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-background rounded-lg border p-3.5">
-              <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">Adelantos pendientes de entregar</p>
-              <p className="text-xl font-bold font-mono text-amber-700 dark:text-amber-300 mt-1">{fmtMoney(adelantosHoy)}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Cobrado, pero el pedido aún no está ENTREGADO</p>
-            </div>
-            <div className="bg-background rounded-lg border p-3.5">
-              <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">Pedidos con adelanto</p>
-              <p className="text-xl font-bold font-mono text-amber-700 dark:text-amber-300 mt-1">{pedidosConAdelanto}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Últimos 45 días</p>
-            </div>
-          </div>
-          <div className="rounded-lg border bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/30 p-3 text-xs text-blue-800 dark:text-blue-300 mt-4">
-            ℹ️ Foto de hoy, no histórico mensual — no hay ledger de adelantos persistente todavía.
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader><CardTitle className="text-sm">Flujo {anio} — estimación de ingresos y egresos</CardTitle></CardHeader>
-        <CardContent className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Concepto</TableHead>
-                {MESES_CORTOS.map((m, i) => <TableHead key={m} className={cn("text-right", meses[i].mes === hoy.getMonth() + 1 && "text-primary")}>{m}</TableHead>)}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableRow className="bg-muted/60"><TableCell colSpan={13} className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Ingresos</TableCell></TableRow>
-              <TableRow>
-                <TableCell className="text-muted-foreground">Ventas entregadas</TableCell>
-                {ingresos.map((v, i) => <TableCell key={i} className={cn("text-right font-mono", v > 0 && "text-emerald-600")}>{v === 0 ? "—" : fmtMoney(v)}</TableCell>)}
-              </TableRow>
-              <TableRow className="bg-muted/40 font-bold">
-                <TableCell>TOTAL INGRESOS</TableCell>
-                {totalIngresos.map((v, i) => <TableCell key={i} className="text-right font-mono text-emerald-600">{v === 0 ? "—" : fmtMoney(v)}</TableCell>)}
-              </TableRow>
-
-              <TableRow className="bg-muted/60"><TableCell colSpan={13} className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Egresos</TableCell></TableRow>
-              <TableRow>
-                <TableCell className="text-muted-foreground">COGS</TableCell>
-                {egresosCogs.map((v, i) => <TableCell key={i} className={cn("text-right font-mono", v > 0 && "text-destructive")}>{v === 0 ? "—" : fmtMoney(v)}</TableCell>)}
-              </TableRow>
-              <TableRow>
-                <TableCell className="text-muted-foreground">Gastos fijos + operativos (sin publicidad)</TableCell>
-                {egresosFijos.map((v, i) => <TableCell key={i} className={cn("text-right font-mono", v > 0 && "text-destructive")}>{v === 0 ? "—" : fmtMoney(v)}</TableCell>)}
-              </TableRow>
-              <TableRow>
-                <TableCell className="text-muted-foreground">Courier integrado</TableCell>
-                {egresosCourier.map((v, i) => <TableCell key={i} className={cn("text-right font-mono", v > 0 && "text-destructive")}>{v === 0 ? "—" : fmtMoney(v)}</TableCell>)}
-              </TableRow>
-              <TableRow>
-                <TableCell className="text-muted-foreground">Publicidad manual estimada</TableCell>
-                {egresosPublicidad.map((v, i) => <TableCell key={i} className={cn("text-right font-mono", v > 0 && "text-destructive")}>{v === 0 ? "—" : fmtMoney(v)}</TableCell>)}
-              </TableRow>
-              <TableRow className="bg-muted/40 font-bold">
-                <TableCell>TOTAL EGRESOS</TableCell>
-                {totalEgresos.map((v, i) => <TableCell key={i} className="text-right font-mono text-destructive">{v === 0 ? "—" : fmtMoney(v)}</TableCell>)}
-              </TableRow>
-            </TableBody>
-            <TableFooter>
-              <TableRow className="bg-primary text-primary-foreground font-bold">
-                <TableCell>FLUJO NETO</TableCell>
-                {flujoNeto.map((v, i) => <TableCell key={i} className={cn("text-right font-mono", v < 0 && "text-red-200")}>{meses[i].tieneDatos ? fmtMoney(v) : "—"}</TableCell>)}
-              </TableRow>
-            </TableFooter>
-          </Table>
-        </CardContent>
-      </Card>
+      <PanelCard
+        titulo={`Flujo de caja ${anio}`}
+        subtitulo={`Del 1 de enero al ${partes(datos.hasta)[2]} de ${MESES_LARGOS[partes(datos.hasta)[1] - 1]}. Los meses que faltan quedan vacíos.`}
+      >
+        <AdminTable
+          caption={`Flujo de caja estimado por mes de ${anio}`}
+          columns={columnas}
+          rows={filas}
+          getRowKey={(f) => f.clave}
+          rowClassName={(f) => (f.futuro ? "text-pc-text-muted" : undefined)}
+          footer={{
+            mes: "Año a la fecha",
+            entradas: formatSoles(totales.entradas),
+            compra: formatSoles(totales.compra),
+            fijos: formatSoles(totales.fijos),
+            publicidad: formatSoles(totales.publicidad),
+            envios: formatSoles(totales.envios),
+            comisiones: formatSoles(totales.comisiones),
+            salidas: formatSoles(totales.salidas),
+            neto: soles(totales.neto, true),
+            acumulado: soles(totales.neto, true),
+          }}
+        />
+      </PanelCard>
     </div>
   );
+}
+
+function NotaPublicidad({ estado }: { estado: EstadoPublicidad }) {
+  if (estado === "sin_permiso") {
+    return (
+      <p className="text-xs text-pc-text-muted">
+        No tienes permiso para ver las cuentas de publicidad conectadas: la publicidad incluye solo lo cargado en
+        Gastos › Publicidad.
+      </p>
+    );
+  }
+  if (estado === "error" || estado === "sin_servicio") {
+    return (
+      <p className="text-xs text-pc-text-muted">
+        No se pudo leer el consumo de las cuentas de publicidad conectadas: la publicidad incluye solo lo cargado en
+        Gastos › Publicidad.
+      </p>
+    );
+  }
+  return null;
 }
