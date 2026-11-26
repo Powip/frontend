@@ -7,13 +7,17 @@ import {
   describeLinesWithoutValue,
   findLinesWithoutValue,
 } from "@/features/sunat/sunat-document/utils/find-lines-without-value";
-import { isGiftCandidate, isGiftTaxType } from "@/features/sunat/sunat-document/utils/gift-lines";
+import {
+  getAllowedGiftModes,
+  isGiftCandidate,
+  isGiftTaxType,
+} from "@/features/sunat/sunat-document/utils/gift-lines";
 
 /**
  * Why the document cannot be issued yet. It points to the gift panel above
  * only for the lines that panel actually handles.
  */
-export function ZeroValueLinesAlert() {
+export function ZeroValueLinesAlert({ taxRegime }: { taxRegime?: string } = {}) {
   const { control } = useFormContext<CreateSunatDocumentsFormValues>();
   const items = useWatch({ control, name: "documents.0.items" }) ?? [];
   const lines = findLinesWithoutValue(items);
@@ -23,7 +27,10 @@ export function ZeroValueLinesAlert() {
   }
 
   const blocked = lines.map((line) => items[line.lineNumber - 1]);
-  const toChoose = blocked.some((item) => isGiftCandidate(item) && !isGiftTaxType(item.taxType));
+  // A Nuevo RUS gift-only document has no option above to choose.
+  const toChoose =
+    getAllowedGiftModes(items, taxRegime).length > 0 &&
+    blocked.some((item) => isGiftCandidate(item) && !isGiftTaxType(item.taxType));
   const toPrice = blocked.some((item) => isGiftTaxType(item.taxType));
 
   return (

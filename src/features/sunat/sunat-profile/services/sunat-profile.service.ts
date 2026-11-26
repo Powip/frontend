@@ -5,11 +5,13 @@ import {
   replaceSunatProfileCertificateApi,
   setDefaultSunatProfileApi,
   updateSunatProfileEstablishmentCodeApi,
+  updateSunatProfileTaxRegimeApi,
 } from "../api/sunat-profile.api";
 import type { CreateSunatProfileRequestDto } from "../dto/create-sunat-profile-request.dto";
 import type { ReplaceSunatProfileCertificateInput } from "../dto/replace-sunat-profile-certificate-request.dto";
 import { toSunatProfile } from "../mappers/to-sunat-profile";
 import type { SunatProfile } from "../models/sunat-profile";
+import type { SunatTaxRegime } from "../utils/tax-regime";
 
 export async function createSunatProfile(
   requestDto: CreateSunatProfileRequestDto,
@@ -39,6 +41,18 @@ export async function updateSunatProfileEstablishmentCode({
   establishmentCode: string;
 }): Promise<SunatProfile> {
   const responseDto = await updateSunatProfileEstablishmentCodeApi(id, establishmentCode);
+
+  return toSunatProfile(responseDto);
+}
+
+export async function updateSunatProfileTaxRegime({
+  id,
+  taxRegime,
+}: {
+  id: string;
+  taxRegime: SunatTaxRegime;
+}): Promise<SunatProfile> {
+  const responseDto = await updateSunatProfileTaxRegimeApi(id, taxRegime);
 
   return toSunatProfile(responseDto);
 }

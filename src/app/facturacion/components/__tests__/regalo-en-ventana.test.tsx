@@ -224,6 +224,42 @@ describe("el envío nunca es regalo", () => {
   });
 });
 
+function NuevoRusWindow({ order }: { order: Order }) {
+  form = useForm<CreateSunatDocumentsFormValues>({
+    defaultValues: {
+      documents: [buildSunatDocumentFromSale(order, { taxRegime: "NUEVO_RUS" })],
+    },
+  });
+
+  return (
+    <FormProvider {...form}>
+      <GiftChoicePanel taxRegime="NUEVO_RUS" />
+      <ItemsEditTable taxRegime="NUEVO_RUS" />
+      <ZeroValueLinesAlert taxRegime="NUEVO_RUS" />
+    </FormProvider>
+  );
+}
+
+describe("emisor en el Nuevo RUS", () => {
+  it("solo regalo: sin opciones, el mensaje rojo no dice «elige arriba»", () => {
+    render(<NuevoRusWindow order={sale([crema])} />);
+    type(discount(), "100");
+
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    expect(alertText()).toContain("CREMA");
+    expect(alertText()).not.toContain("elige arriba");
+    expect(screen.getByRole("columnheader", { name: /Descuento/ })).not.toHaveTextContent("IGV");
+  });
+
+  it("con compra: ofrece 31 y el precio normal sugerido no lleva IGV", () => {
+    render(<NuevoRusWindow order={sale([crema, { sku: "GORRA", quantity: 1, unitPrice: 30 }])} />);
+    type(discount("GORRA"), "30");
+    fireEvent.click(promocion() as HTMLElement);
+
+    expect(normalPrice("GORRA")).toHaveValue(30);
+  });
+});
+
 describe("la unidad del descuento", () => {
   it("la tabla dice que es un monto en soles sin IGV", () => {
     render(<Window order={sale([crema])} />);

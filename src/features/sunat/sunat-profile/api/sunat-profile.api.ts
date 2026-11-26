@@ -3,6 +3,7 @@ import axiosAuth from "@/lib/axiosAuth";
 import type { CreateSunatProfileRequestDto } from "../dto/create-sunat-profile-request.dto";
 import type { ReplaceSunatProfileCertificateRequestDto } from "../dto/replace-sunat-profile-certificate-request.dto";
 import type { SunatProfileResponseDto } from "../dto/sunat-profile-response.dto";
+import type { SunatTaxRegime } from "../utils/tax-regime";
 
 export async function createSunatProfileApi(
   requestDto: CreateSunatProfileRequestDto,
@@ -21,6 +22,7 @@ export async function createSunatProfileApi(
   formData.append("ubigeo", requestDto.ubigeo);
   formData.append("address", requestDto.address);
   formData.append("establishmentCode", requestDto.establishmentCode);
+  formData.append("taxRegime", requestDto.taxRegime);
 
   formData.append("solUser", requestDto.solUser);
   formData.append("solPassword", requestDto.solPassword);
@@ -74,6 +76,19 @@ export async function updateSunatProfileEstablishmentCodeApi(
   const { data } = await axiosAuth.patch<SunatProfileResponseDto>(
     `${API.sunat}/api/v1/sunat-profiles/${id}`,
     { establishmentCode },
+  );
+
+  return data;
+}
+
+/** Changes the issuer's tax regime (GENERAL or NUEVO_RUS). */
+export async function updateSunatProfileTaxRegimeApi(
+  id: string,
+  taxRegime: SunatTaxRegime,
+): Promise<SunatProfileResponseDto> {
+  const { data } = await axiosAuth.patch<SunatProfileResponseDto>(
+    `${API.sunat}/api/v1/sunat-profiles/${id}`,
+    { taxRegime },
   );
 
   return data;

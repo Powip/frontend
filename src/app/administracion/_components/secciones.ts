@@ -1,7 +1,8 @@
 /**
  * Navegación de Administración (FEAT-34): 5 secciones con subpestañas, como el Panel de control. Las URL de siempre
- * no cambian. Liquidaciones salió del menú (vive en Operaciones); Cuentas y Capital quedan fuera del menú hasta
- * tener backend (D6, 25-11-2026): sus datos viven solo en el navegador.
+ * no cambian. Liquidaciones salió del menú (vive en Operaciones). Cuentas queda fuera del menú hasta tener backend
+ * (D6, 25-11-2026). Capital y ROI volvió al menú (Octa, 26-11-2026) con un aviso de que sus datos viven solo en el
+ * navegador (`soloNavegador`) hasta la Fase 3.
  */
 
 export interface PaginaAdmin {
@@ -10,6 +11,8 @@ export interface PaginaAdmin {
   label: string;
   titulo: string;
   subtitulo: string;
+  /** Sus datos se guardan solo en el navegador (sin backend todavía): el layout lo avisa arriba de la página. */
+  soloNavegador?: boolean;
 }
 
 export interface SeccionAdmin {
@@ -119,6 +122,13 @@ export const SECCIONES_ADMIN: SeccionAdmin[] = [
         titulo: "Flujo de caja",
         subtitulo: "Entradas y salidas mes a mes del año del periodo",
       },
+      {
+        href: "/administracion/capital",
+        label: "Capital y ROI",
+        titulo: "Capital y ROI",
+        subtitulo: "Capital invertido, retorno y préstamos",
+        soloNavegador: true,
+      },
     ],
   },
 ];
@@ -130,13 +140,6 @@ export const PAGINAS_FUERA_DE_MENU: (PaginaAdmin & { seccion: string })[] = [
     href: "/administracion/cuentas",
     label: "Cuentas por cobrar y pagar",
     titulo: "Cuentas por cobrar y pagar",
-    subtitulo: "Fuera del menú hasta tener backend",
-  },
-  {
-    seccion: "caja",
-    href: "/administracion/capital",
-    label: "Capital y ROI",
-    titulo: "Capital y ROI",
     subtitulo: "Fuera del menú hasta tener backend",
   },
 ];

@@ -1,10 +1,11 @@
 import type { Order } from "@/features/sales/models/order";
-import { IGV_RATE } from "@/features/sunat/shared/constants/sunat.constants";
+import { isNuevoRus } from "@/features/sunat/sunat-profile/utils/tax-regime";
 import {
   SUNAT_TAX_AFFECTATION_TYPES,
   type SunatTaxAffectationType,
 } from "../enums/sunat-document.enums";
 import type { CreateSunatDocumentsFormValues } from "../schemas/create-sunat-documents.schema";
+import { getIssuerIgvRate } from "./nuevo-rus";
 
 type SunatItem = CreateSunatDocumentsFormValues["documents"][number]["items"][number];
 
@@ -91,8 +92,19 @@ export function isGiftOnlyDocument(items: readonly SunatItem[]): boolean {
 /**
  * A gift-only document can only be a «regalo aparte» (13): a «regalo de
  * promoción» (31) needs a purchase to go with.
+ *
+ * A Nuevo RUS issuer never uses 13 (the issuer pays IGV, which its boleta
+ * must not show): its gifts go only as 31, so a gift-only document has no
+ * option there.
  */
-export function getAllowedGiftModes(items: readonly SunatItem[]): GiftMode[] {
+export function getAllowedGiftModes(
+  items: readonly SunatItem[],
+  taxRegime?: string | null,
+): GiftMode[] {
+  if (isNuevoRus(taxRegime)) {
+    return isGiftOnlyDocument(items) ? [] : [GIFT_MODES.PROMOCION];
+  }
+
   return isGiftOnlyDocument(items)
     ? [GIFT_MODES.APARTE]
     : [GIFT_MODES.PROMOCION, GIFT_MODES.APARTE];
@@ -174,18 +186,27 @@ export function applyGiftMode(items: readonly SunatItem[], mode: GiftMode): Suna
   });
 }
 
-/** Normal price per unit, IGV included, as the user knows it. */
+/**
+ * Normal price per unit, IGV included, as the user knows it. A Nuevo RUS
+ * issuer has no IGV: its normal price is the valor referencial.
+ */
 export function getGiftNormalUnitPrice(
   item: Pick<SunatItem, "referenceUnitValue">,
+  taxRegime?: string | null,
 ): number | undefined {
   const value = item.referenceUnitValue;
 
-  return value && value > 0 ? round2(value * (1 + IGV_RATE)) : undefined;
+  return value && value > 0 ? round2(value * (1 + getIssuerIgvRate(taxRegime))) : undefined;
 }
 
 /** Valor referencial per unit, WITHOUT IGV, from the normal price with IGV. */
-export function toReferenceUnitValue(normalUnitPriceWithIgv: number): number | undefined {
-  return normalUnitPriceWithIgv > 0 ? normalUnitPriceWithIgv / (1 + IGV_RATE) : undefined;
+export function toReferenceUnitValue(
+  normalUnitPriceWithIgv: number,
+  taxRegime?: string | null,
+): number | undefined {
+  return normalUnitPriceWithIgv > 0
+    ? normalUnitPriceWithIgv / (1 + getIssuerIgvRate(taxRegime))
+    : undefined;
 }
 
 /** Valor referencial of the whole line, without IGV, at 2 decimals. */
@@ -194,11 +215,16 @@ export function getGiftLineValue(item: Pick<SunatItem, "referenceUnitValue" | "q
 }
 
 /** IGV that the company pays for its «regalo aparte» lines (13). */
-export function getCompanyPaidGiftIgv(items: readonly SunatItem[]): number {
+export function getCompanyPaidGiftIgv(
+  items: readonly SunatItem[],
+  taxRegime?: string | null,
+): number {
+  const rate = getIssuerIgvRate(taxRegime);
+
   return round2(
     items
       .filter((item) => item.taxType === GIFT_MODES.APARTE)
-      .reduce((sum, item) => sum + round2(getGiftLineValue(item) * IGV_RATE), 0),
+      .reduce((sum, item) => sum + round2(getGiftLineValue(item) * rate), 0),
   );
 }
 
@@ -213,7 +239,12 @@ export function getGiftsWithoutPrice(items: readonly SunatItem[]): SunatItem[] {
  * marked as a gift, and the gift's value (`giftValue` is the whole line),
  * all without IGV. Shipping is added afterwards and is never a gift.
  */
-export function rememberSaleAmounts(productItems: SunatItem[], sale: Order): SunatItem[] {
+export function rememberSaleAmounts(
+  productItems: SunatItem[],
+  sale: Order,
+  taxRegime?: string | null,
+): SunatItem[] {
+  const igvRate = getIssuerIgvRate(taxRegime);
   const pricesIncludeTax = sale.taxMode === "INCLUIDO";
 
   return productItems.map((item, index) => {
@@ -233,7 +264,7 @@ export function rememberSaleAmounts(productItems: SunatItem[], sale: Order): Sun
         discountAmount: item.discountAmount,
         isGift: Boolean(saleItem.isGift),
         referenceUnitValue:
-          unitValue > 0 ? (pricesIncludeTax ? unitValue / (1 + IGV_RATE) : unitValue) : undefined,
+          unitValue > 0 ? (pricesIncludeTax ? unitValue / (1 + igvRate) : unitValue) : undefined,
       },
     };
   });
