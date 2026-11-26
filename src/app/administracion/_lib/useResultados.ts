@@ -34,7 +34,14 @@ import {
   type Resultados,
   rangoMesDentro,
 } from "./resultados";
-import { delPeriodo, type PedidoAdmin, type ResumenVentas, resumirVentas } from "./ventas";
+import {
+  delPeriodo,
+  estaEnTransito,
+  type PedidoAdmin,
+  type ResumenVentas,
+  resumirVentas,
+  saldoPedido,
+} from "./ventas";
 
 const STALE = 5 * 60 * 1000;
 
@@ -233,4 +240,23 @@ export function useResultadosAnuales(anio: number, opciones: { hastaDia?: DiaKey
     publicidad,
     ...calculado,
   };
+}
+
+/** Ventana de «en tránsito»: el saldo en calle es una foto de hoy, no depende del periodo elegido. */
+export const DIAS_EN_TRANSITO = 90;
+
+/**
+ * Pedidos que hoy están en calle (ASIGNADO_A_GUIA, EN_ENVIO o DESPACHADO), creados en los últimos 90 días. Antes solo
+ * se contaba DESPACHADO (~25 % del saldo real, FEAT-34 C7).
+ */
+export function usePedidosEnTransito() {
+  const { companyId, hoy } = useAdminContexto();
+  const desde = sumarDias(hoy, -(DIAS_EN_TRANSITO - 1));
+  const q = useAdminOrders(companyId, desde, hoy);
+  const pedidos = useMemo(() => (q.data ?? []).filter(estaEnTransito), [q.data]);
+  const saldo = useMemo(
+    () => pedidos.reduce((s, p) => s + saldoPedido(p), 0),
+    [pedidos],
+  );
+  return { cargando: q.isLoading, error: q.error, pedidos, saldo, desde, hasta: hoy };
 }
