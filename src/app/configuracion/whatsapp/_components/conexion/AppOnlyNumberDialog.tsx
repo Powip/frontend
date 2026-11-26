@@ -42,6 +42,11 @@ interface AppOnlyNumberDialogProps {
   onClose: () => void;
 }
 
+const APP_ONLY_ROLE_HINTS = {
+  store: "Los avisos de esta tienda se preparan para este número y una persona los envía desde él.",
+  seller: "Queda registrado como el número de la vendedora. Sus chats siguen en el celular.",
+};
+
 /** Alta de un número que vive solo en la app del celular: sin Meta ni token. */
 export function AppOnlyNumberDialog({
   storeId,
@@ -126,6 +131,7 @@ export function AppOnlyNumberDialog({
             storeName={storeName}
             role={role}
             roles={["store", "seller"]}
+            hints={APP_ONLY_ROLE_HINTS}
             onRoleChange={(next: NumberRole) => setRole(next === "seller" ? "seller" : "store")}
             sellerId={sellerId}
             onSellerChange={setSellerId}

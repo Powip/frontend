@@ -90,6 +90,10 @@ describe("Tienda con «Solo app»", () => {
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveTextContent("No envía solo");
     expect(dialog).toHaveTextContent("No recibe mensajes en Powip");
+    // La ayuda del tipo de número no puede prometer envío automático ni chats.
+    expect(dialog).not.toHaveTextContent("avisos automáticos de esta tienda");
+    expect(dialog).not.toHaveTextContent("chats quedan en cola");
+    expect(dialog).toHaveTextContent("una persona los envía desde él");
     await user.type(within(dialog).getByLabelText(/Número de WhatsApp/), "987 000 111");
     await user.click(within(dialog).getByRole("button", { name: "Guardar número" }));
 
