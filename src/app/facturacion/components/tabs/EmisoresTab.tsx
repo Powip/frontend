@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 import { useState } from "react";
 import CertificadoUploadModal from "@/app/facturacion/components/modals/CertificadoUploadModal";
 import { EstablishmentCodeModal } from "@/app/facturacion/components/modals/EstablishmentCodeModal";
+import { TaxRegimeModal } from "@/app/facturacion/components/modals/TaxRegimeModal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,6 +22,7 @@ import { useSetDefaultSunatProfile } from "@/features/sunat/sunat-profile/hooks/
 import { useSunatProfiles } from "@/features/sunat/sunat-profile/hooks/use-sunat-profiles";
 import type { SunatProfile } from "@/features/sunat/sunat-profile/models/sunat-profile";
 import { getCertificateStatus } from "@/features/sunat/sunat-profile/utils/get-certificate-status";
+import { isNuevoRus } from "@/features/sunat/sunat-profile/utils/tax-regime";
 
 interface EmisoresTabProps {
   comprobanteRows: TaxDocumentRow[];
@@ -36,6 +38,7 @@ interface EmisoresTabProps {
 export function EmisoresTab({ comprobanteRows, onOpenIssuer }: EmisoresTabProps) {
   const [createOpen, setCreateOpen] = useState(false);
   const [editingCode, setEditingCode] = useState<SunatProfile | null>(null);
+  const [editingRegime, setEditingRegime] = useState<SunatProfile | null>(null);
   const { data: profiles = [], isLoading } = useSunatProfiles();
   const setDefaultProfile = useSetDefaultSunatProfile();
 
@@ -103,6 +106,7 @@ export function EmisoresTab({ comprobanteRows, onOpenIssuer }: EmisoresTabProps)
                     onOpenIssuer={onOpenIssuer}
                     onMakeDefault={() => setDefaultProfile.mutate(profile.id)}
                     onEditEstablishmentCode={() => setEditingCode(profile)}
+                    onEditTaxRegime={() => setEditingRegime(profile)}
                     isMakingDefault={setDefaultProfile.isPending}
                   />
                 ))
@@ -120,6 +124,8 @@ export function EmisoresTab({ comprobanteRows, onOpenIssuer }: EmisoresTabProps)
       <CertificadoUploadModal isOpen={createOpen} onClose={() => setCreateOpen(false)} />
 
       <EstablishmentCodeModal profile={editingCode} onClose={() => setEditingCode(null)} />
+
+      <TaxRegimeModal profile={editingRegime} onClose={() => setEditingRegime(null)} />
     </div>
   );
 }
@@ -130,6 +136,7 @@ function EmisorRow(props: {
   onOpenIssuer: EmisoresTabProps["onOpenIssuer"];
   onMakeDefault: () => void;
   onEditEstablishmentCode: () => void;
+  onEditTaxRegime: () => void;
   isMakingDefault: boolean;
 }) {
   const { profile, rows } = props;
@@ -183,6 +190,21 @@ function EmisorRow(props: {
             onClick={props.onEditEstablishmentCode}
           >
             Editar código
+          </Button>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+          <span>
+            {isNuevoRus(profile.taxRegime)
+              ? "Nuevo RUS · solo boletas, sin IGV"
+              : "Régimen general"}
+          </span>
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto p-0 text-xs"
+            onClick={props.onEditTaxRegime}
+          >
+            Cambiar régimen
           </Button>
         </div>
       </TableCell>

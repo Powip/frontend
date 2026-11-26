@@ -30,6 +30,7 @@ import {
 import { getEmissionErrorMessage } from "@/features/sunat/sunat-document/utils/get-emission-error-message";
 import { useSunatDocumentSequences } from "@/features/sunat/sunat-document-sequence/hooks/use-sunat-document-sequences";
 import { useIssuerSelection } from "@/features/sunat/sunat-profile/hooks/use-issuer-selection";
+import { isNuevoRus } from "@/features/sunat/sunat-profile/utils/tax-regime";
 
 const PIPELINE_STEPS = [
   "Generando XML UBL 2.1",
@@ -82,8 +83,13 @@ export default function LoteEmisionModal({
    *
    * The same builder is used by the single-emission modal.
    */
+  // Nuevo RUS: the builder makes every document a boleta without IGV, also
+  // for customers with RUC (this regime cannot issue facturas).
+  const taxRegime = issuer.selected?.taxRegime;
+  const nuevoRus = isNuevoRus(taxRegime);
+
   const allDocuments = sales.map((sale) => {
-    const document = buildSunatDocumentFromSale(sale);
+    const document = buildSunatDocumentFromSale(sale, { taxRegime });
     const defaultSequence = sequences.find(
       (sequence) => sequence.taxDocumentType === document.taxDocumentType && sequence.isDefault,
     );
@@ -326,6 +332,14 @@ export default function LoteEmisionModal({
                   </div>
                 )}
 
+                {nuevoRus && (
+                  <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                    El RUC {issuer.selected?.ruc} está en el Nuevo RUS: todas las ventas se emiten
+                    como boleta y sin IGV, también las de clientes con RUC. Cada cliente paga lo
+                    mismo.
+                  </div>
+                )}
+
                 {isMissingSeries && (
                   <div
                     role="alert"
@@ -422,7 +436,13 @@ export default function LoteEmisionModal({
               <Button
                 type="button"
                 onClick={handleSubmit}
-                disabled={isPending || documents.length === 0 || isMissingSeries || isIssuerBlocked}
+                disabled={
+                  isPending ||
+                  documents.length === 0 ||
+                  isMissingSeries ||
+                  isIssuerBlocked ||
+                  (nuevoRus && invoiceCount > 0)
+                }
               >
                 {isPending ? (
                   <>

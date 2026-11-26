@@ -48,6 +48,7 @@ import { getEmissionErrorMessage } from "@/features/sunat/sunat-document/utils/g
 import { useSunatDocumentSequences } from "@/features/sunat/sunat-document-sequence/hooks/use-sunat-document-sequences";
 import type { SunatProfile } from "@/features/sunat/sunat-profile/models/sunat-profile";
 import { findIssuerByRuc } from "@/features/sunat/sunat-profile/utils/issuers";
+import { isNuevoRus } from "@/features/sunat/sunat-profile/utils/tax-regime";
 
 interface NotaCreditoModalProps {
   isOpen: boolean;
@@ -115,6 +116,8 @@ export default function NotaCreditoModal({
     ? resolveCreditNoteSeries(sequences, original.taxDocumentType)
     : undefined;
   const seriesPrefix = original?.taxDocumentType === "01" ? "F" : "B";
+  // Nuevo RUS: the note amends a boleta without IGV, so no amount shows IGV.
+  const nuevoRus = isNuevoRus(issuerProfile?.taxRegime);
 
   const balance = original ? getCreditableBalance(original, documents) : 0;
   const originalTotal = Number(original?.taxDocumentPayload.totals.grandTotal ?? 0);
@@ -293,7 +296,7 @@ export default function NotaCreditoModal({
 
             {isAmount ? (
               <div className="grid gap-2">
-                <Label>Monto de la nota (IGV incluido)</Label>
+                <Label>{nuevoRus ? "Monto de la nota" : "Monto de la nota (IGV incluido)"}</Label>
 
                 <Input
                   type="number"
