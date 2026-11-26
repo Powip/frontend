@@ -26,6 +26,11 @@ describe("parseEmbeddedSignupMessage", () => {
     });
   });
 
+  it("lee waba_ids cuando Meta comparte varias cuentas", () => {
+    const data = { type: "WA_EMBEDDED_SIGNUP", event: "FINISH", data: { waba_ids: ["w1", "w2", 3] } };
+    expect(parseEmbeddedSignupMessage("https://www.facebook.com", data)).toMatchObject({ wabaIds: ["w1", "w2"] });
+  });
+
   it("ignora otros orígenes, otros tipos y eventos sin terminar", () => {
     const ok = { type: "WA_EMBEDDED_SIGNUP", event: "FINISH", data: { waba_id: "w" } };
     expect(parseEmbeddedSignupMessage("https://evil.com", ok)).toBeNull();

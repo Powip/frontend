@@ -241,6 +241,21 @@ export interface CompleteEmbeddedSignupInput {
   coexistence?: boolean;
   /** La persona aceptó que un número sin coexistencia deja la app del celular. */
   confirmNoCoexistence?: boolean;
+  /** Número que la persona dice que conecta: solo se conecta si Meta lo compartió. */
+  expectedPhoneNumber?: string;
+  /** Todas las WABA que avisó la ventana de Meta (`waba_ids`). */
+  wabaIds?: string[];
+  /** La persona aceptó mover el número de otra tienda o reemplazar el de la empresa. */
+  confirmReassign?: boolean;
+}
+
+/** Segundo paso de «Conectar con Facebook»: el número elegido de la lista o una confirmación. */
+export interface SelectEmbeddedSignupPhoneInput {
+  storeId: string;
+  selectionId: string;
+  phoneNumberId?: string;
+  confirmNoCoexistence?: boolean;
+  confirmReassign?: boolean;
 }
 
 export interface ConnectWabaResult {

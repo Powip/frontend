@@ -318,6 +318,7 @@ export function ConnectionView({
             connectionPermission,
           )}
           startSignup={signupAvailable ? mutations.startSignup : undefined}
+          selectSignupPhone={signupAvailable ? mutations.selectSignupPhone : undefined}
           initialPhase={signup.phase}
           agents={agents.kind === "ready" ? agents.data : []}
           onClose={() => setSignup(null)}

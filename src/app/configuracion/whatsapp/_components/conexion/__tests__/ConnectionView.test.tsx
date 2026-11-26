@@ -195,7 +195,10 @@ describe("Números por tienda y Embedded Signup", () => {
     expect(view.onStoreChange).toHaveBeenCalledWith("store-nova");
     await user.click(within(stores).getByRole("button", { name: "Conectar número de KUNCA" }));
     const dialog = screen.getByRole("dialog", { name: "Conectar número de KUNCA" });
-    expect(within(dialog).queryByRole("textbox")).not.toBeInTheDocument();
+    // Sin credenciales ni SMS: el único campo es el número opcional que se va a conectar.
+    expect(within(dialog).getAllByRole("textbox")).toEqual([
+      within(dialog).getByLabelText("Número que vas a conectar (opcional)"),
+    ]);
     expect(dialog).toHaveTextContent(/ocurren en la ventana de Meta, no en POWIP/);
     const start = within(dialog).getByRole("button", { name: "Continuar con Facebook" });
     expect(start).toHaveAttribute("aria-disabled", "true");

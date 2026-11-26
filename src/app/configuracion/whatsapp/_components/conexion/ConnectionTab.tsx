@@ -47,7 +47,11 @@ import {
   type NumberRoleChoice,
 } from "./connection-types";
 import { launchEmbeddedSignup } from "@/lib/metaEmbeddedSignup";
-import { completeEmbeddedSignup, getEmbeddedSignupConfig } from "@/services/crmTeamService";
+import {
+  completeEmbeddedSignup,
+  getEmbeddedSignupConfig,
+  selectEmbeddedSignupPhone,
+} from "@/services/crmTeamService";
 import {
   getWhatsAppStatus,
   getWhatsAppAccounts,
@@ -401,7 +405,9 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
       await applyNumberRole(saved?.data?.id, { role, seller });
       await reloadAfterChange();
     },
-    startSignup: async ({ mode, role, seller, confirmNoCoexistence } = { storeId: "", mode: "api" }) => {
+    startSignup: async (
+      { mode, role, seller, confirmNoCoexistence, expectedPhoneNumber } = { storeId: "", mode: "api" },
+    ) => {
       // Embedded Signup de Meta (FB.login con config_id y code), el mismo que usa Ventas por chat.
       // mode "coex": el número sigue en la app WhatsApp Business del celular (coexistencia).
       const config = signupConfigQuery.data;
@@ -413,10 +419,12 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
           storeId: activeStoreId,
           code: shared.code,
           ...(shared.wabaId ? { wabaId: shared.wabaId } : {}),
+          ...(shared.wabaIds?.length ? { wabaIds: shared.wabaIds } : {}),
           ...(shared.phoneNumberId ? { phoneNumberId: shared.phoneNumberId } : {}),
           ...(coexistence ? { coexistence: true } : {}),
           ...(role === "company" ? { asCompanyDefault: true } : {}),
           ...(confirmNoCoexistence ? { confirmNoCoexistence: true } : {}),
+          ...(expectedPhoneNumber ? { expectedPhoneNumber } : {}),
         });
         await applyNumberRole(saved?.data?.id, { role, seller });
         await reloadAfterChange();
@@ -440,6 +448,18 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
         businessPhoneNumber: LOCAL_TEST_WABA.businessPhoneNumber,
         ...(role === "company" ? { asCompanyDefault: true } : {}),
         ...(confirmNoCoexistence ? { confirmNoCoexistence: true } : {}),
+      });
+      await applyNumberRole(saved?.data?.id, { role, seller });
+      await reloadAfterChange();
+    },
+    // Segundo paso de «Conectar con Facebook»: número elegido o confirmación, sin abrir Meta.
+    selectSignupPhone: async ({ storeId, selectionId, phoneNumberId, role, seller, confirmNoCoexistence, confirmReassign }) => {
+      const saved = await selectEmbeddedSignupPhone({
+        storeId,
+        selectionId,
+        ...(phoneNumberId ? { phoneNumberId } : {}),
+        ...(confirmNoCoexistence ? { confirmNoCoexistence: true } : {}),
+        ...(confirmReassign ? { confirmReassign: true } : {}),
       });
       await applyNumberRole(saved?.data?.id, { role, seller });
       await reloadAfterChange();
