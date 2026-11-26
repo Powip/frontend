@@ -26,7 +26,8 @@ export interface ConnectionMutations {
       wabaId: string;
       phoneNumberId: string;
       accessToken: string;
-      businessPhoneNumber: string;
+      /** Opcional: Powip lee el número de Meta; el escrito solo se compara con ese. */
+      businessPhoneNumber?: string;
     } & NumberRoleChoice,
   ) => Promise<void>;
   assignNumber?: (input: {
@@ -56,6 +57,36 @@ export interface NumberRoleChoice {
   seller?: { id: string; name: string } | null;
   /** La persona aceptó que un número sin coexistencia deja la app del celular. */
   confirmNoCoexistence?: boolean;
+  /** La persona vio que el número escrito no es el de Meta y aceptó guardar el de Meta. */
+  confirmPhoneFromMeta?: boolean;
+}
+
+/** Código del backend cuando el número escrito no es el que Meta tiene para ese Phone number ID. */
+export const PHONE_MISMATCH_CODE = "WHATSAPP.PHONE_NUMBER_MISMATCH";
+
+/** Los dos números (solo dígitos) cuando el escrito no coincide con el de Meta. */
+export interface PhoneMismatch {
+  typed: string;
+  meta: string;
+}
+
+/** Devuelve ambos números si el backend avisó que el número escrito no es el de Meta. */
+export function phoneMismatch(error: unknown): PhoneMismatch | null {
+  const data = (
+    error as {
+      response?: {
+        data?: {
+          code?: unknown;
+          details?: { typedPhoneNumber?: unknown; metaPhoneNumber?: unknown };
+        };
+      };
+    }
+  )?.response?.data;
+  if (data?.code !== PHONE_MISMATCH_CODE) return null;
+  const typed = data.details?.typedPhoneNumber;
+  const meta = data.details?.metaPhoneNumber;
+  if (typeof typed !== "string" || typeof meta !== "string") return null;
+  return { typed, meta };
 }
 
 /** Código del backend cuando el número no tiene coexistencia y falta la confirmación. */

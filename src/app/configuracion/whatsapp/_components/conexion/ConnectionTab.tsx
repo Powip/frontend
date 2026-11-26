@@ -391,11 +391,12 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
       await syncWhatsAppAppData(accountId);
       await queryClient.invalidateQueries({ queryKey: ["whatsapp", "coexistence"] });
     },
-    connectManual: async ({ role, seller, confirmNoCoexistence, ...input }) => {
+    connectManual: async ({ role, seller, confirmNoCoexistence, confirmPhoneFromMeta, ...input }) => {
       const saved = await connectCustomWaba(token, {
         ...input,
         ...(role === "company" ? { asCompanyDefault: true } : {}),
         ...(confirmNoCoexistence ? { confirmNoCoexistence: true } : {}),
+        ...(confirmPhoneFromMeta ? { confirmPhoneFromMeta: true } : {}),
       });
       await applyNumberRole(saved?.data?.id, { role, seller });
       await reloadAfterChange();

@@ -26,10 +26,17 @@ import { cn } from "@/lib/utils";
 import {
   type ConnectionMutations,
   errorMessage,
-  needsCoexistenceConfirmation,
   type NumberRole,
+  needsCoexistenceConfirmation,
+  type PhoneMismatch,
+  phoneMismatch,
 } from "./connection-types";
-import { isRoleComplete, NoCoexistenceDialog, NumberRoleField } from "./NumberRoleField";
+import {
+  isRoleComplete,
+  NoCoexistenceDialog,
+  NumberRoleField,
+  PhoneMismatchDialog,
+} from "./NumberRoleField";
 
 interface ManualNumberDialogProps {
   storeId: string;
@@ -40,13 +47,26 @@ interface ManualNumberDialogProps {
 }
 
 const FIELDS = [
-  { key: "businessPhoneNumber", label: "Número (con código de país)", placeholder: "51987654321" },
+  {
+    key: "businessPhoneNumber",
+    label: "Número (opcional, con código de país)",
+    placeholder: "Powip lo lee de Meta",
+  },
   { key: "phoneNumberId", label: "Phone number ID", placeholder: "Desde WhatsApp Manager" },
   { key: "wabaId", label: "WABA ID", placeholder: "Cuenta de WhatsApp Business" },
   { key: "accessToken", label: "Token de acceso", placeholder: "Token del usuario del sistema" },
 ] as const;
 
 type FieldKey = (typeof FIELDS)[number]["key"];
+
+/** El número no es obligatorio: Powip lo lee de Meta con el Phone number ID. */
+const REQUIRED_FIELDS: FieldKey[] = ["phoneNumberId", "wabaId", "accessToken"];
+
+/** Confirmaciones que la persona ya dio en este envío (se suman, no se pierden). */
+interface Confirmations {
+  confirmNoCoexistence?: boolean;
+  confirmPhoneFromMeta?: boolean;
+}
 
 /** Alta manual de un número (sin Facebook): datos de WhatsApp Manager. Suma un número, no reemplaza. */
 export function ManualNumberDialog({
@@ -59,6 +79,8 @@ export function ManualNumberDialog({
   const [role, setRole] = useState<NumberRole>("store");
   const [sellerId, setSellerId] = useState<string | null>(null);
   const [askCoexistence, setAskCoexistence] = useState(false);
+  const [mismatch, setMismatch] = useState<PhoneMismatch | null>(null);
+  const [confirmed, setConfirmed] = useState<Confirmations>({});
   const [values, setValues] = useState<Record<FieldKey, string>>({
     businessPhoneNumber: "",
     phoneNumberId: "",
@@ -71,28 +93,39 @@ export function ManualNumberDialog({
     kind: "idle",
   });
   const complete =
-    FIELDS.every((field) => values[field.key].trim()) && isRoleComplete(role, sellerId);
+    REQUIRED_FIELDS.every((key) => values[key].trim()) && isRoleComplete(role, sellerId);
 
-  // Primero se consulta a Meta (en el backend): si el número no tiene coexistencia, el
-  // backend responde sin conectar nada y aquí se pregunta antes de volver a enviar.
-  const submit = async (confirmNoCoexistence = false) => {
+  // Primero se consulta a Meta (en el backend): si el número escrito no es el de Meta o
+  // no tiene coexistencia, el backend responde sin conectar nada y aquí se pregunta antes
+  // de volver a enviar. Las confirmaciones ya dadas se mantienen en el reenvío.
+  const submit = async (extra: Confirmations = {}) => {
     if (!connectManual || !complete || state.kind === "pending") return;
+    const confirmations = { ...confirmed, ...extra };
+    setConfirmed(confirmations);
     setState({ kind: "pending" });
     const seller = agents.find((agent) => agent.id === sellerId) ?? null;
+    const typedPhone = values.businessPhoneNumber.replace(/\D/g, "");
     try {
       await connectManual({
         storeId,
-        businessPhoneNumber: values.businessPhoneNumber.replace(/\D/g, ""),
+        ...(typedPhone ? { businessPhoneNumber: typedPhone } : {}),
         phoneNumberId: values.phoneNumberId.trim(),
         wabaId: values.wabaId.trim(),
         accessToken: values.accessToken.trim(),
         role,
         seller: role === "seller" && seller ? { id: seller.id, name: seller.name } : null,
-        ...(confirmNoCoexistence ? { confirmNoCoexistence: true } : {}),
+        ...(confirmations.confirmNoCoexistence ? { confirmNoCoexistence: true } : {}),
+        ...(confirmations.confirmPhoneFromMeta ? { confirmPhoneFromMeta: true } : {}),
       });
       onClose();
     } catch (caught) {
-      if (!confirmNoCoexistence && needsCoexistenceConfirmation(caught)) {
+      const numbers = confirmations.confirmPhoneFromMeta ? null : phoneMismatch(caught);
+      if (numbers) {
+        setState({ kind: "idle" });
+        setMismatch(numbers);
+        return;
+      }
+      if (!confirmations.confirmNoCoexistence && needsCoexistenceConfirmation(caught)) {
         setState({ kind: "idle" });
         setAskCoexistence(true);
         return;
@@ -163,7 +196,19 @@ export function ManualNumberDialog({
         }}
         onConfirm={() => {
           setAskCoexistence(false);
-          void submit(true);
+          void submit({ confirmNoCoexistence: true });
+        }}
+      />
+      <PhoneMismatchDialog
+        mismatch={mismatch}
+        onCancel={() => {
+          setMismatch(null);
+          setState({ kind: "error", message: "No se conectó el número." });
+        }}
+        onConfirm={() => {
+          if (mismatch) setValues((prev) => ({ ...prev, businessPhoneNumber: mismatch.meta }));
+          setMismatch(null);
+          void submit({ confirmPhoneFromMeta: true });
         }}
       />
     </Dialog>

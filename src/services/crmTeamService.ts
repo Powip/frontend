@@ -105,10 +105,11 @@ export async function connectCustomWaba(input: ConnectWabaInput): Promise<Connec
       {
         wabaId: input.wabaId,
         phoneNumberId: input.phoneNumberId,
-        businessPhoneNumber: input.businessPhoneNumber,
+        ...(input.businessPhoneNumber ? { businessPhoneNumber: input.businessPhoneNumber } : {}),
         accessToken: input.accessToken,
         ...(input.asCompanyDefault ? { asCompanyDefault: true } : {}),
         ...(input.confirmNoCoexistence ? { confirmNoCoexistence: true } : {}),
+        ...(input.confirmPhoneFromMeta ? { confirmPhoneFromMeta: true } : {}),
       },
     )
   ).data;

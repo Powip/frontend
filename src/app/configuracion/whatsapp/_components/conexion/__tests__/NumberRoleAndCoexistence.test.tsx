@@ -14,7 +14,7 @@ const sinCoexistencia = () =>
 
 function fillManual() {
   const values: Record<string, string> = {
-    "Número (con código de país)": "51900000103",
+    "Número (opcional, con código de país)": "51900000103",
     "Phone number ID": "300000000000103",
     "WABA ID": "200000000000001",
     "Token de acceso": "token-de-prueba",

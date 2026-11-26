@@ -107,7 +107,9 @@ export function NumberRoleField({
             onValueChange={onSellerChange}
           >
             <SelectTrigger className={waSelectTriggerSm} aria-labelledby="number-seller-label">
-              <SelectValue placeholder={agents.length ? "Elige la vendedora" : "No hay vendedoras"} />
+              <SelectValue
+                placeholder={agents.length ? "Elige la vendedora" : "No hay vendedoras"}
+              />
             </SelectTrigger>
             <SelectContent>
               {agents.map((agent) => (
@@ -132,6 +134,53 @@ interface NoCoexistenceDialogProps {
   open: boolean;
   onCancel: () => void;
   onConfirm: () => void;
+}
+
+interface PhoneMismatchDialogProps {
+  /** Ambos números en dígitos; null = cerrado. */
+  mismatch: { typed: string; meta: string } | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
+/**
+ * Aviso cuando el número escrito no es el que Meta tiene para ese Phone number ID.
+ * Powip guarda siempre el de Meta; sin confirmar no se conecta nada.
+ */
+export function PhoneMismatchDialog({ mismatch, onCancel, onConfirm }: PhoneMismatchDialogProps) {
+  return (
+    <AlertDialog open={mismatch !== null} onOpenChange={(next) => !next && onCancel()}>
+      <AlertDialogContent className={cn(waDialogContent, "sm:max-w-[460px]")}>
+        <AlertDialogHeader className={waDialogHeader}>
+          <AlertDialogTitle className={waDialogTitle}>
+            El número no coincide con Meta
+          </AlertDialogTitle>
+        </AlertDialogHeader>
+        <div className={cn(waDialogBody, "space-y-3")}>
+          <AlertDialogDescription className="m-0 text-sm text-wa-muted">
+            El número que escribiste no es el de este Phone number ID. Powip guardará el número que
+            tiene Meta.
+          </AlertDialogDescription>
+          {mismatch && (
+            <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+              <dt className="text-wa-muted">Escribiste</dt>
+              <dd className="m-0 font-medium line-through">+{mismatch.typed}</dd>
+              <dt className="text-wa-muted">Según Meta</dt>
+              <dd className="m-0 font-semibold">+{mismatch.meta}</dd>
+            </dl>
+          )}
+        </div>
+        <AlertDialogFooter className={waDialogFooter}>
+          <AlertDialogCancel className={waButton()} onClick={onCancel}>
+            Cancelar
+          </AlertDialogCancel>
+          <AlertDialogAction className={waButton({ variant: "primary" })} onClick={onConfirm}>
+            Usar +{mismatch?.meta ?? ""}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
 }
 
 /** Aviso antes de conectar un número sin coexistencia: deja de funcionar en el celular. */

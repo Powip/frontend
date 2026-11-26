@@ -1,9 +1,20 @@
 "use client";
-import { useEffect, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  needsCoexistenceConfirmation,
+  type PhoneMismatch,
+  phoneMismatch,
+} from "@/app/configuracion/whatsapp/_components/conexion/connection-types";
+import {
+  NoCoexistenceDialog,
+  PhoneMismatchDialog,
+} from "@/app/configuracion/whatsapp/_components/conexion/NumberRoleField";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTemplates } from "@/hooks/useCrmEngagement";
+import { EmbeddedSignupCancelledError, launchEmbeddedSignup } from "@/lib/metaEmbeddedSignup";
 import { crmError } from "@/services/crmService";
 import {
   completeEmbeddedSignup,
@@ -11,12 +22,8 @@ import {
   getEmbeddedSignupConfig,
   integrationsErrorMessage,
 } from "@/services/crmTeamService";
-import { EmbeddedSignupCancelledError, launchEmbeddedSignup } from "@/lib/metaEmbeddedSignup";
-import type { EmbeddedSignupConfig } from "@/types/crmTeam";
-import { useTemplates } from "@/hooks/useCrmEngagement";
 import type { Template } from "@/types/crm";
-import { needsCoexistenceConfirmation } from "@/app/configuracion/whatsapp/_components/conexion/connection-types";
-import { NoCoexistenceDialog } from "@/app/configuracion/whatsapp/_components/conexion/NumberRoleField";
+import type { EmbeddedSignupConfig } from "@/types/crmTeam";
 import AjustesCard from "./AjustesCard";
 import ConnectWithFacebookBox from "./ConnectWithFacebookBox";
 
@@ -62,8 +69,7 @@ function TemplatesStatus() {
 export default function AjustesWhatsAppCard() {
   const { auth, selectedStoreId } = useAuth();
   const stores = auth?.company?.stores ?? [];
-  const defaultStoreId =
-    stores.find((s) => s.id === selectedStoreId)?.id ?? stores[0]?.id ?? "";
+  const defaultStoreId = stores.find((s) => s.id === selectedStoreId)?.id ?? stores[0]?.id ?? "";
 
   const [form, setForm] = useState(EMPTY);
   const [storeId, setStoreId] = useState(defaultStoreId);
@@ -76,6 +82,10 @@ export default function AjustesWhatsAppCard() {
   const [signupConfigError, setSignupConfigError] = useState<string | null>(null);
   // Alta que Meta frenó por falta de coexistencia: se repite solo si la persona acepta.
   const [pendingRetry, setPendingRetry] = useState<(() => Promise<void>) | null>(null);
+  const [phoneRetry, setPhoneRetry] = useState<{
+    mismatch: PhoneMismatch;
+    retry: () => Promise<void>;
+  } | null>(null);
 
   useEffect(() => {
     if (!storeId && defaultStoreId) setStoreId(defaultStoreId);
@@ -94,14 +104,18 @@ export default function AjustesWhatsAppCard() {
   const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  const complete = Boolean(storeId) && Object.values(form).every((v) => v.trim().length > 0);
+  // El número es opcional: ms-integrations lo lee de Meta con el ID del número.
+  const complete =
+    Boolean(storeId) &&
+    [form.wabaId, form.phoneNumberId, form.accessToken].every((v) => v.trim().length > 0);
 
   const submit = async () => {
+    const typedPhone = form.businessPhoneNumber.trim();
     const body = {
       storeId,
       wabaId: form.wabaId.trim(),
       phoneNumberId: form.phoneNumberId.trim(),
-      businessPhoneNumber: form.businessPhoneNumber.trim(),
+      ...(typedPhone ? { businessPhoneNumber: typedPhone } : {}),
       accessToken: form.accessToken.trim(),
       ...(asCompanyDefault ? { asCompanyDefault: true } : {}),
     };
@@ -116,9 +130,20 @@ export default function AjustesWhatsAppCard() {
     setForm((f) => ({ ...f, accessToken: "" }));
     try {
       const res = await connectCustomWaba(body);
-      setConnected(res.data?.businessPhoneNumber || body.businessPhoneNumber);
+      setConnected(
+        res.data?.businessPhoneNumber || body.businessPhoneNumber || "número de WhatsApp",
+      );
       setForm(EMPTY);
     } catch (err) {
+      // El número escrito no es el de Meta: se muestran ambos y se reenvía guardando el de Meta.
+      const numbers = body.confirmPhoneFromMeta ? null : phoneMismatch(err);
+      if (numbers) {
+        setPhoneRetry({
+          mismatch: numbers,
+          retry: () => sendManual({ ...body, confirmPhoneFromMeta: true }),
+        });
+        return;
+      }
       if (!body.confirmNoCoexistence && needsCoexistenceConfirmation(err)) {
         setPendingRetry(() => () => sendManual({ ...body, confirmNoCoexistence: true }));
         return;
@@ -165,8 +190,8 @@ export default function AjustesWhatsAppCard() {
         <>
           Conecta el número con el que el negocio atiende por WhatsApp. Es el mismo número que usan
           la Bandeja y las notificaciones. Lo más simple es «Conectar con Facebook»; también puedes
-          pegar los datos de WhatsApp Business de Meta (ID de la cuenta, ID del número y un token
-          de acceso del usuario del sistema). Powip los valida con Meta antes de guardarlos.
+          pegar los datos de WhatsApp Business de Meta (ID de la cuenta, ID del número y un token de
+          acceso del usuario del sistema). Powip los valida con Meta antes de guardarlos.
         </>
       }
       canSave={complete}
@@ -230,6 +255,18 @@ export default function AjustesWhatsAppCard() {
           if (retry) void retry();
         }}
       />
+      <PhoneMismatchDialog
+        mismatch={phoneRetry?.mismatch ?? null}
+        onCancel={() => {
+          setPhoneRetry(null);
+          setError("No se conectó el número.");
+        }}
+        onConfirm={() => {
+          const pending = phoneRetry;
+          setPhoneRetry(null);
+          if (pending) void pending.retry();
+        }}
+      />
       <p className="text-xs font-medium">O con datos manuales</p>
       <form
         className="grid gap-3 sm:grid-cols-2"
@@ -253,11 +290,11 @@ export default function AjustesWhatsAppCard() {
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="waba-phone">Número de WhatsApp del negocio</Label>
+          <Label htmlFor="waba-phone">Número de WhatsApp del negocio (opcional)</Label>
           <Input
             id="waba-phone"
             type="tel"
-            placeholder="+51 999 999 999"
+            placeholder="Powip lo lee de Meta"
             value={form.businessPhoneNumber}
             onChange={set("businessPhoneNumber")}
             autoComplete="off"

@@ -193,12 +193,15 @@ export interface ConnectWabaInput {
   storeId: string;
   wabaId: string;
   phoneNumberId: string;
-  businessPhoneNumber: string;
+  /** Opcional: ms-integrations lee el número de Meta; el escrito solo se compara. */
+  businessPhoneNumber?: string;
   accessToken: string;
   /** Guarda el número como el de toda la empresa (respaldo de las tiendas sin número propio). */
   asCompanyDefault?: boolean;
   /** La persona aceptó que un número sin coexistencia deja la app del celular. */
   confirmNoCoexistence?: boolean;
+  /** La persona aceptó guardar el número de Meta cuando el escrito no coincide (409). */
+  confirmPhoneFromMeta?: boolean;
 }
 
 /** Lo que el navegador necesita para abrir el Embedded Signup de Meta (sin secretos). */
