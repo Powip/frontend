@@ -6,24 +6,45 @@ import {
   getDefaultOlvaHomePaymentMethod,
   getOlvaOnlinePaymentMethods,
   isOlvaHomeDeliveryAvailable,
+  isOlvaPaymentMethodAvailable,
 } from "../utils/olva-payment-methods";
 
-// Runs with the default setting: online payment is not available yet
+// FEAT-35: PagoEfectivo works at Olva; Niubiz (card) still cannot be completed. The headquarter
+// lists both, like Olva's catalog does
 const modalities = buildOlvaHeadquarterResponse().paymentModalities as OlvaPaymentModality[];
+const headquarter = { paymentModalities: modalities };
 
-describe("while online payment is not available", () => {
-  it("does not offer ONLINE as a way to pay", () => {
-    expect(filterAvailableOlvaModalities(modalities).map((item) => item.code)).toEqual(["STORE"]);
+describe("online payment with PagoEfectivo", () => {
+  it("offers ONLINE as a way to pay, next to paying at the store", () => {
+    expect(filterAvailableOlvaModalities(modalities).map((item) => item.code)).toEqual([
+      "STORE",
+      "ONLINE",
+    ]);
   });
 
-  it("does not offer home delivery, which can only be paid online", () => {
-    expect(isOlvaHomeDeliveryAvailable()).toBe(false);
+  it("offers PagoEfectivo and not Niubiz", () => {
+    expect(isOlvaPaymentMethodAvailable("pagoefectivo")).toBe(true);
+    expect(isOlvaPaymentMethodAvailable("niubiz")).toBe(false);
+    expect(getOlvaOnlinePaymentMethods(headquarter).map((method) => method.code)).toEqual([
+      "pagoefectivo",
+    ]);
   });
 
-  it("has no online payment methods, even if the headquarter lists some", () => {
-    const headquarter = { paymentModalities: modalities };
+  it("starts a home delivery with PagoEfectivo already chosen, since it is the only method", () => {
+    expect(getDefaultOlvaHomePaymentMethod(headquarter)).toBe("pagoefectivo");
+  });
 
-    expect(getOlvaOnlinePaymentMethods(headquarter)).toEqual([]);
-    expect(getDefaultOlvaHomePaymentMethod(headquarter)).toBeUndefined();
+  it("offers home delivery, which is paid online", () => {
+    expect(isOlvaHomeDeliveryAvailable()).toBe(true);
+  });
+
+  it("has nothing to offer online when the headquarter only lists Niubiz", () => {
+    const cardOnly = modalities.map((modality) => ({
+      ...modality,
+      paymentMethods: modality.paymentMethods.filter((method) => method.code === "niubiz"),
+    }));
+
+    expect(getOlvaOnlinePaymentMethods({ paymentModalities: cardOnly })).toEqual([]);
+    expect(getDefaultOlvaHomePaymentMethod({ paymentModalities: cardOnly })).toBeUndefined();
   });
 });

@@ -321,15 +321,15 @@ describe("Olva payment methods", () => {
     ],
   };
 
-  it("does not offer PagoEfectivo while its provider is down", () => {
+  it("does not offer Niubiz, which cannot be completed at Olva", () => {
     expect(getOlvaOnlinePaymentMethods(headquarter).map((method) => method.code)).toEqual([
-      "niubiz",
+      "pagoefectivo",
     ]);
-    expect(isOlvaPaymentMethodAvailable("pagoefectivo")).toBe(false);
+    expect(isOlvaPaymentMethodAvailable("niubiz")).toBe(false);
   });
 
   it("starts a home delivery on the only usable method", () => {
-    expect(getDefaultOlvaHomePaymentMethod(headquarter)).toBe("niubiz");
+    expect(getDefaultOlvaHomePaymentMethod(headquarter)).toBe("pagoefectivo");
     expect(getDefaultOlvaHomePaymentMethod(undefined)).toBeUndefined();
   });
 });

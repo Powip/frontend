@@ -81,12 +81,6 @@ vi.mock("@/lib/axiosAuth", () => ({ default: {} }));
 vi.mock("@/utils/printShippingGuide", () => ({ printShippingGuide: vi.fn() }));
 vi.mock("@/utils/printOrderLabel", () => ({ printOrderLabelsBatch: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() } }));
-// These tests cover the online flows (home delivery, card), so they run with online payment on
-vi.mock("../constants/send-to-olva.constants", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../constants/send-to-olva.constants")>()),
-  SEND_TO_OLVA_ONLINE_PAYMENT_AVAILABLE: true,
-}));
-
 const AGENCY_OPTION = "Agencia Lima Centro — Jr. de la Unión 100";
 const firstOrder = buildOrderDetail();
 const secondOrder = buildOrderDetail({
@@ -441,7 +435,7 @@ describe("SendToOlvaModal home delivery", () => {
     expect(services.bulkCreateOlvaShipments).not.toHaveBeenCalled();
   });
 
-  it("registers a home delivery with its ubigeo, address and reference, paid online by card", async () => {
+  it("registers a home delivery with its ubigeo, address and reference, paid with PagoEfectivo", async () => {
     const { user } = renderModal([homeOrder]);
 
     await chooseHomeDelivery(user);
@@ -456,7 +450,7 @@ describe("SendToOlvaModal home delivery", () => {
     expect(item).toMatchObject({
       deliveryType: "D",
       whoPays: "ONLINE",
-      paymentMethod: "niubiz",
+      paymentMethod: "pagoefectivo",
       destination: {
         ubigeoCode: "150131",
         address: "Av. Larco 123",
@@ -485,7 +479,11 @@ describe("SendToOlvaModal home delivery", () => {
       whoPays: "STORE",
       destination: { agencyCode: "LIM01" },
     });
-    expect(home).toMatchObject({ deliveryType: "D", whoPays: "ONLINE", paymentMethod: "niubiz" });
+    expect(home).toMatchObject({
+      deliveryType: "D",
+      whoPays: "ONLINE",
+      paymentMethod: "pagoefectivo",
+    });
   });
 });
 

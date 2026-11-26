@@ -9,12 +9,11 @@ export const SEND_TO_OLVA_DESCRIPTION_MAX_LENGTH = 150;
 export const SEND_TO_OLVA_DEFAULT_DELIVERY_TYPE = OLVA_DELIVERY_TYPES.STORE_PICKUP;
 
 /**
- * The provider only accepts payment at the destination for now: online payment (Niubiz and
- * PagoEfectivo) cannot be completed. While this is false the ONLINE modality is not offered, and
- * since home delivery can only be paid online, only store pickup is available. Set it to true
- * when the provider confirms online payment works.
+ * Master switch for online payment (FEAT-35: on, with PagoEfectivo). When false the ONLINE
+ * modality is not offered and, since home delivery can only be paid online, only store pickup
+ * is available. Which online methods work is decided by `OLVA_UNAVAILABLE_PAYMENT_METHODS`.
  */
-export const SEND_TO_OLVA_ONLINE_PAYMENT_AVAILABLE = false;
+export const SEND_TO_OLVA_ONLINE_PAYMENT_AVAILABLE = true;
 
 /** Looks at the guide's shipments to know which orders already have an active one. */
 export const SEND_TO_OLVA_GUIDE_SHIPMENTS_LIMIT = 100;

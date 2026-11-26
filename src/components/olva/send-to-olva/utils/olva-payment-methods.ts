@@ -12,20 +12,21 @@ import {
 import { SEND_TO_OLVA_ONLINE_PAYMENT_AVAILABLE } from "../constants/send-to-olva.constants";
 
 /**
- * Payment methods the provider cannot process right now. PagoEfectivo answers 502 on Olva's side
- * (our API turns it into a 503 PAYMENT_PROVIDER_UNAVAILABLE), so it is not offered. To bring it
- * back, remove it from this list.
+ * Payment methods the provider cannot process right now. Niubiz (card) cannot be completed at
+ * Olva, so it is not offered; PagoEfectivo works (FEAT-35). To bring one back, remove it here.
  */
 export const OLVA_UNAVAILABLE_PAYMENT_METHODS: readonly OlvaPaymentMethod[] = [
-  OLVA_PAYMENT_METHODS.PAGOEFECTIVO,
+  OLVA_PAYMENT_METHODS.NIUBIZ,
 ];
 
 export function isOlvaPaymentMethodAvailable(method: OlvaPaymentMethod): boolean {
   return !OLVA_UNAVAILABLE_PAYMENT_METHODS.includes(method);
 }
 
-/** Home delivery can only be paid online, so it is available only while online payment is. */
-export const isOlvaHomeDeliveryAvailable = (): boolean => SEND_TO_OLVA_ONLINE_PAYMENT_AVAILABLE;
+/** Home delivery can only be paid online: it is available while some online method works. */
+export const isOlvaHomeDeliveryAvailable = (): boolean =>
+  SEND_TO_OLVA_ONLINE_PAYMENT_AVAILABLE &&
+  Object.values(OLVA_PAYMENT_METHODS).some(isOlvaPaymentMethodAvailable);
 
 /** The "who pays" options the user can pick today: ONLINE is left out while it cannot be completed. */
 export function filterAvailableOlvaModalities(

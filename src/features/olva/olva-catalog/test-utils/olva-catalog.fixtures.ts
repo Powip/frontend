@@ -32,7 +32,10 @@ export function buildOlvaHeadquarterResponse(
         description: "Pagas ahora",
         sortOrder: 1,
         requiresPaymentMethod: true,
-        paymentMethods: [{ code: "niubiz", title: "Tarjeta", methodId: 7 }],
+        paymentMethods: [
+          { code: "niubiz", title: "Tarjeta", methodId: 7 },
+          { code: "pagoefectivo", title: "PagoEfectivo", methodId: 9 },
+        ],
       },
     ],
     ...overrides,
