@@ -5,6 +5,7 @@ import { crmKeys } from "@/lib/crmSse";
 import { useAuth } from "@/contexts/AuthContext";
 import { crmError } from "@/services/crmService";
 import {
+  deleteChannelAccount,
   disconnectChannelAccount,
   getCrmAccess,
   getCrmPlan,
@@ -72,6 +73,24 @@ export function useDisconnectChannelAccount() {
     onSuccess: (data, account) => {
       qc.setQueryData<ChannelAccount[]>(planKeys.channels, (rows) => replaceAccount(rows, data));
       toast.success(`${account.name || account.accountId} desconectada`);
+    },
+    onError,
+  });
+}
+
+/** «Eliminar»: la cuenta sale de la lista y sus chats de la Bandeja. */
+export function useDeleteChannelAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (account: ChannelAccount) => deleteChannelAccount(account.id),
+    onSuccess: (data, account) => {
+      qc.setQueryData<ChannelAccount[]>(planKeys.channels, (rows) => rows?.filter((r) => r.id !== account.id));
+      qc.invalidateQueries({ queryKey: crmKeys.conversations });
+      // Las tarjetas de Meta y TikTok de Ajustes también listan la cuenta.
+      qc.invalidateQueries({ queryKey: ["crm", "meta-accounts"] });
+      qc.invalidateQueries({ queryKey: ["crm", "tiktok-accounts"] });
+      const chats = data.deletedConversations === 1 ? "1 chat" : `${data.deletedConversations} chats`;
+      toast.success(`${account.name || account.accountId} eliminada (${chats} borrados)`);
     },
     onError,
   });
