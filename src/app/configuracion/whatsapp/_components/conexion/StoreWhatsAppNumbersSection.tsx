@@ -94,6 +94,20 @@ export function StoreWhatsAppNumbersSection({
   const list = accounts.kind === "ready" ? accounts.data : [];
   const agentList = agents.kind === "ready" ? agents.data : [];
   const blocked = !!blockedReason;
+  const isAppOnly = (account: WhatsAppAccount) => account.connectionType === "app_manual";
+  const hasAppOnly = list.some(isAppOnly);
+  const appOnlyPrimary = list.some(
+    (account) => isAppOnly(account) && (account.isPrimary ?? account.role === "principal"),
+  );
+  const description = [
+    "Cada vendedora puede tener su propio número. Los chats de un número llegan a su vendedora; sin vendedora, el número es de la tienda.",
+    appOnlyPrimary
+      ? "Los avisos del principal no salen solos: quedan en la bandeja de envío asistido."
+      : "El principal envía los avisos automáticos.",
+    hasAppOnly ? "Los números «Solo app» no reciben chats en Powip." : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
   const { setPrimary, assignNumber, syncAppData, disconnect } = mutations;
 
   const run = async (accountId: string, task: () => Promise<void>, fallback: string) => {
@@ -116,7 +130,7 @@ export function StoreWhatsAppNumbersSection({
       <WaCardHeader
         titleId="store-wa-numbers-title"
         title={`Números de ${storeName}`}
-        description="Cada vendedora puede tener su propio número. Los chats de un número llegan a su vendedora; sin vendedora, el número es de la tienda. El principal envía los avisos automáticos."
+        description={description}
       />
 
       {accounts.kind === "loading" && (

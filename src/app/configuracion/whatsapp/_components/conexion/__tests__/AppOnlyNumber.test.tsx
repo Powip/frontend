@@ -87,6 +87,14 @@ describe("Tienda con «Solo app»", () => {
     expect(screen.queryByText(/solo app todavía no está definido/i)).not.toBeInTheDocument();
   });
 
+  it("la lista de números no promete avisos automáticos ni chats de «Solo app»", () => {
+    render(view());
+    const numbers = section(/^Números de/);
+    expect(numbers).not.toHaveTextContent("El principal envía los avisos automáticos");
+    expect(numbers).toHaveTextContent("Los avisos del principal no salen solos");
+    expect(numbers).toHaveTextContent("Los números «Solo app» no reciben chats en Powip.");
+  });
+
   it("conecta un número solo con la app, con tienda o vendedora", async () => {
     const user = userEvent.setup();
     const connectAppOnly = jest.fn().mockResolvedValue(undefined);
