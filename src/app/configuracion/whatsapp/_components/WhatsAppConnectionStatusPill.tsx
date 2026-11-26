@@ -6,6 +6,7 @@ import { WaDot } from "@/components/whatsapp/ui/WaPill";
 import { useAuth } from "@/contexts/AuthContext";
 import { WHATSAPP_CONNECTION_STATES } from "@/features/whatsapp/enums/whatsapp.enums";
 import { getWhatsAppStatus } from "@/services/whatsappService";
+import { useViewedStore } from "./viewed-store-context";
 
 const MUTED_PILL =
   "inline-flex items-center gap-2 rounded-full border border-wa-border bg-wa-surface-2 px-3 py-[7px] text-[13px] font-semibold text-wa-muted";
@@ -16,7 +17,12 @@ const CONNECTED_PILL =
 export function WhatsAppConnectionStatusPill() {
   const { auth, selectedStoreId } = useAuth();
   const stores = auth?.company?.stores ?? [];
-  const storeId = stores.find((store) => store.id === selectedStoreId)?.id ?? stores[0]?.id ?? null;
+  const [viewedStoreId] = useViewedStore();
+  const storeId =
+    viewedStoreId ??
+    stores.find((store) => store.id === selectedStoreId)?.id ??
+    stores[0]?.id ??
+    null;
   const token = auth?.accessToken ?? "";
 
   const statusQuery = useQuery({

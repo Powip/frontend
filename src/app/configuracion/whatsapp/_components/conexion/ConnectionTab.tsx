@@ -41,6 +41,7 @@ import type { WhatsAppResourceState as ResourceState } from "@/features/whatsapp
 import type { WhatsAppTemplate } from "@/features/whatsapp/models/template.model";
 import type { ContingencyValues } from "@/features/whatsapp/schemas/connection.schema";
 import { resolveEffectivePermissions } from "@/features/whatsapp/utils/whatsapp-permissions.util";
+import { useViewedStore } from "../viewed-store-context";
 import { launchEmbeddedSignup } from "@/lib/metaEmbeddedSignup";
 import {
   completeEmbeddedSignup,
@@ -149,6 +150,13 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
   const [storeId, setStoreId] = useState<string | null>(null);
   const activeStoreId =
     storeId ?? stores.find((store) => store.id === selectedStoreId)?.id ?? stores[0]?.id ?? null;
+
+  // La insignia de la cabecera sigue la tienda de este selector mientras la pestaña está abierta.
+  const [, setViewedStoreId] = useViewedStore();
+  useEffect(() => {
+    setViewedStoreId(activeStoreId);
+    return () => setViewedStoreId(null);
+  }, [activeStoreId, setViewedStoreId]);
 
   // Estados dinámicos para alimentar la vista
   const [statusState, setStatusState] = useState<any>({ kind: "loading" });
