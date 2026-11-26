@@ -16,11 +16,64 @@ export interface ConnectionMutations {
   }) => Promise<WhatsAppTestRun>;
   /** C-07 · GET /wa/messages/:id: estado actualizado de la prueba (enviado → entregado → leído). */
   refreshTest?: (messageId: string) => Promise<WhatsAppTestRun>;
-  startSignup?: (input: { storeId: string; mode: "api" | "coex" }) => Promise<void>;
+  startSignup?: (
+    input: { storeId: string; mode: "api" | "coex" } & NumberRoleChoice,
+  ) => Promise<void>;
+  /** Alta manual: suma un número a la tienda con los datos de WhatsApp Manager. */
+  connectManual?: (
+    input: {
+      storeId: string;
+      wabaId: string;
+      phoneNumberId: string;
+      accessToken: string;
+      businessPhoneNumber: string;
+    } & NumberRoleChoice,
+  ) => Promise<void>;
+  assignNumber?: (input: {
+    accountId: string;
+    userId: string | null;
+    userName: string | null;
+  }) => Promise<void>;
+  setPrimary?: (accountId: string) => Promise<void>;
+  /** Coexistencia: trae contactos e historial del celular. */
+  syncAppData?: (accountId: string) => Promise<void>;
   saveContingency?: (values: ContingencyValues) => Promise<void>;
   markAssistedOpened?: (itemId: string) => Promise<void>;
   markAssistedSent?: (itemId: string) => Promise<void>;
   discardAssisted?: (input: { itemId: string; reason: string }) => Promise<void>;
+}
+
+/**
+ * Tipo del número al darlo de alta:
+ * - company: número principal de la empresa (lo usan las tiendas sin número propio);
+ * - store: número principal de la tienda (envía sus avisos automáticos);
+ * - seller: número de una vendedora (sus chats le llegan a ella).
+ */
+export type NumberRole = "company" | "store" | "seller";
+
+export interface NumberRoleChoice {
+  role?: NumberRole;
+  seller?: { id: string; name: string } | null;
+  /** La persona aceptó que un número sin coexistencia deja la app del celular. */
+  confirmNoCoexistence?: boolean;
+}
+
+/** Código del backend cuando el número no tiene coexistencia y falta la confirmación. */
+export const COEXISTENCE_CONFIRMATION_CODE = "WHATSAPP.COEXISTENCE_CONFIRMATION_REQUIRED";
+
+/** El número no tiene coexistencia: hay que preguntar antes de conectarlo. */
+export class CoexistenceConfirmationRequired extends Error {
+  constructor() {
+    super("Este número no tiene coexistencia.");
+    this.name = "CoexistenceConfirmationRequired";
+  }
+}
+
+/** true si el error del backend pide confirmar el número sin coexistencia. */
+export function needsCoexistenceConfirmation(error: unknown): boolean {
+  if (error instanceof CoexistenceConfirmationRequired) return true;
+  const data = (error as { response?: { data?: { code?: unknown } } })?.response?.data;
+  return data?.code === COEXISTENCE_CONFIRMATION_CODE;
 }
 
 export const CONNECTION_PENDING_REASON =

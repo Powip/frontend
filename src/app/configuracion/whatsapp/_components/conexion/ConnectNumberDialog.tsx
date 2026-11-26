@@ -21,8 +21,15 @@ import {
   waDialogTitle,
 } from "@/components/whatsapp/ui/wa-classes";
 import { SIGNUP_REQUIREMENTS } from "@/features/whatsapp/constants/whatsapp-connection-catalog";
+import type { WhatsAppAgentOption } from "@/features/whatsapp/models/conversation.model";
 import { cn } from "@/lib/utils";
-import { type ConnectionMutations, errorMessage } from "./connection-types";
+import {
+  type ConnectionMutations,
+  errorMessage,
+  needsCoexistenceConfirmation,
+  type NumberRole,
+} from "./connection-types";
+import { isRoleComplete, NoCoexistenceDialog, NumberRoleField } from "./NumberRoleField";
 
 export type SignupPhase =
   | { kind: "intro" }
@@ -37,6 +44,7 @@ interface ConnectNumberDialogProps {
   blockedReason: string | null;
   startSignup: ConnectionMutations["startSignup"];
   initialPhase?: SignupPhase;
+  agents?: WhatsAppAgentOption[];
   onClose: () => void;
 }
 
@@ -49,25 +57,54 @@ export function ConnectNumberDialog({
   blockedReason,
   startSignup,
   initialPhase = { kind: "intro" },
+  agents = [],
   onClose,
 }: ConnectNumberDialogProps) {
   const reasonId = useId();
   const [phase, setPhase] = useState<SignupPhase>(initialPhase);
+  const [role, setRole] = useState<NumberRole>("store");
+  const [sellerId, setSellerId] = useState<string | null>(null);
+  const [askCoexistence, setAskCoexistence] = useState(false);
+  const roleComplete = isRoleComplete(role, sellerId);
   const blocked = !!blockedReason || !startSignup;
   const completedSteps = phase.kind === "success" ? 3 : 1;
 
-  const start = async () => {
+  const run = async (confirmNoCoexistence: boolean) => {
     if (blocked || !startSignup || phase.kind === "waiting") return;
     setPhase({ kind: "waiting" });
+    const seller = agents.find((agent) => agent.id === sellerId) ?? null;
     try {
-      await startSignup({ storeId, mode });
+      await startSignup({
+        storeId,
+        mode,
+        role,
+        seller: role === "seller" && seller ? { id: seller.id, name: seller.name } : null,
+        ...(confirmNoCoexistence ? { confirmNoCoexistence: true } : {}),
+      });
       setPhase({ kind: "success" });
     } catch (caught) {
+      // Meta dijo que el número no tiene coexistencia: no se conectó nada; se pregunta.
+      if (!confirmNoCoexistence && needsCoexistenceConfirmation(caught)) {
+        setPhase({ kind: "intro" });
+        setAskCoexistence(true);
+        return;
+      }
       setPhase({
         kind: "error",
         message: errorMessage(caught, "No se completó la conexión. No se conectó ningún número."),
       });
     }
+  };
+
+  // Número dedicado (sin coexistencia): se avisa ANTES de abrir Meta, porque el código de
+  // Facebook sirve una sola vez. Con coexistencia se abre Meta y el backend lo confirma.
+  const start = () => {
+    if (blocked || !roleComplete || phase.kind === "waiting") return;
+    if (mode === "api") {
+      setAskCoexistence(true);
+      return;
+    }
+    void run(false);
   };
 
   const close = () => {
@@ -124,6 +161,18 @@ export function ConnectNumberDialog({
             ocurren en la ventana de Meta, no en POWIP.
           </p>
 
+          {phase.kind !== "success" && (
+            <NumberRoleField
+              storeName={storeName}
+              role={role}
+              onRoleChange={setRole}
+              sellerId={sellerId}
+              onSellerChange={setSellerId}
+              agents={agents}
+              disabled={phase.kind === "waiting"}
+            />
+          )}
+
           {phase.kind === "waiting" && (
             <WaCallout icon={Loader2} className="[&>svg]:animate-spin" role="status">
               Completa los pasos en la ventana de Meta. Cuando termines, POWIP confirmará la
@@ -155,7 +204,7 @@ export function ConnectNumberDialog({
           ) : (
             <BlockedActionButton
               className={waButton({ variant: "facebook" })}
-              blocked={blocked || phase.kind === "waiting"}
+              blocked={blocked || !roleComplete || phase.kind === "waiting"}
               blockedReasonId={reasonId}
               onClick={start}
             >
@@ -170,6 +219,17 @@ export function ConnectNumberDialog({
           )}
         </div>
       </DialogContent>
+      <NoCoexistenceDialog
+        open={askCoexistence}
+        onCancel={() => {
+          setAskCoexistence(false);
+          setPhase({ kind: "error", message: "No se conectó ningún número." });
+        }}
+        onConfirm={() => {
+          setAskCoexistence(false);
+          void run(true);
+        }}
+      />
     </Dialog>
   );
 }

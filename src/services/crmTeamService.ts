@@ -108,6 +108,7 @@ export async function connectCustomWaba(input: ConnectWabaInput): Promise<Connec
         businessPhoneNumber: input.businessPhoneNumber,
         accessToken: input.accessToken,
         ...(input.asCompanyDefault ? { asCompanyDefault: true } : {}),
+        ...(input.confirmNoCoexistence ? { confirmNoCoexistence: true } : {}),
       },
     )
   ).data;
@@ -137,6 +138,8 @@ export async function completeEmbeddedSignup(
         ...(input.wabaId ? { wabaId: input.wabaId } : {}),
         ...(input.phoneNumberId ? { phoneNumberId: input.phoneNumberId } : {}),
         ...(input.asCompanyDefault ? { asCompanyDefault: true } : {}),
+        ...(input.coexistence ? { coexistence: true } : {}),
+        ...(input.confirmNoCoexistence ? { confirmNoCoexistence: true } : {}),
       },
     )
   ).data;

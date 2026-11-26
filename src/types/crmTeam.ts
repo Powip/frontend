@@ -197,6 +197,8 @@ export interface ConnectWabaInput {
   accessToken: string;
   /** Guarda el número como el de toda la empresa (respaldo de las tiendas sin número propio). */
   asCompanyDefault?: boolean;
+  /** La persona aceptó que un número sin coexistencia deja la app del celular. */
+  confirmNoCoexistence?: boolean;
 }
 
 /** Lo que el navegador necesita para abrir el Embedded Signup de Meta (sin secretos). */
@@ -232,6 +234,10 @@ export interface CompleteEmbeddedSignupInput {
   wabaId?: string;
   phoneNumberId?: string;
   asCompanyDefault?: boolean;
+  /** Número que sigue en la app WhatsApp Business del celular (coexistencia). */
+  coexistence?: boolean;
+  /** La persona aceptó que un número sin coexistencia deja la app del celular. */
+  confirmNoCoexistence?: boolean;
 }
 
 export interface ConnectWabaResult {

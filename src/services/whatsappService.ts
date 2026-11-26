@@ -18,7 +18,11 @@ export interface ConnectWabaPayload {
   phoneNumberId: string;
   accessToken: string;
   businessPhoneNumber: string;
-  storeId: string
+  storeId: string;
+  /** Guardar como número de toda la empresa (lo usan las tiendas sin número propio). */
+  asCompanyDefault?: boolean;
+  /** La persona aceptó que un número sin coexistencia deja la app del celular. */
+  confirmNoCoexistence?: boolean;
 }
 
 export async function connectCustomWaba(token: string, payload: ConnectWabaPayload) {

@@ -15,6 +15,8 @@ import { EmbeddedSignupCancelledError, launchEmbeddedSignup } from "@/lib/metaEm
 import type { EmbeddedSignupConfig } from "@/types/crmTeam";
 import { useTemplates } from "@/hooks/useCrmEngagement";
 import type { Template } from "@/types/crm";
+import { needsCoexistenceConfirmation } from "@/app/configuracion/whatsapp/_components/conexion/connection-types";
+import { NoCoexistenceDialog } from "@/app/configuracion/whatsapp/_components/conexion/NumberRoleField";
 import AjustesCard from "./AjustesCard";
 import ConnectWithFacebookBox from "./ConnectWithFacebookBox";
 
@@ -72,6 +74,8 @@ export default function AjustesWhatsAppCard() {
   const [connected, setConnected] = useState<string | null>(null);
   const [signupConfig, setSignupConfig] = useState<EmbeddedSignupConfig | null>(null);
   const [signupConfigError, setSignupConfigError] = useState<string | null>(null);
+  // Alta que Meta frenó por falta de coexistencia: se repite solo si la persona acepta.
+  const [pendingRetry, setPendingRetry] = useState<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     if (!storeId && defaultStoreId) setStoreId(defaultStoreId);
@@ -101,6 +105,10 @@ export default function AjustesWhatsAppCard() {
       accessToken: form.accessToken.trim(),
       ...(asCompanyDefault ? { asCompanyDefault: true } : {}),
     };
+    await sendManual(body);
+  };
+
+  const sendManual = async (body: Parameters<typeof connectCustomWaba>[0]) => {
     setSaving(true);
     setError(null);
     setConnected(null);
@@ -111,13 +119,17 @@ export default function AjustesWhatsAppCard() {
       setConnected(res.data?.businessPhoneNumber || body.businessPhoneNumber);
       setForm(EMPTY);
     } catch (err) {
+      if (!body.confirmNoCoexistence && needsCoexistenceConfirmation(err)) {
+        setPendingRetry(() => () => sendManual({ ...body, confirmNoCoexistence: true }));
+        return;
+      }
       setError(integrationsErrorMessage(err));
     } finally {
       setSaving(false);
     }
   };
 
-  const connectWithFacebook = async () => {
+  const connectWithFacebook = async (confirmNoCoexistence = false) => {
     if (!signupConfig || !storeId) return;
     setSigningUp(true);
     setError(null);
@@ -128,9 +140,15 @@ export default function AjustesWhatsAppCard() {
         storeId,
         ...shared,
         ...(asCompanyDefault ? { asCompanyDefault: true } : {}),
+        ...(confirmNoCoexistence ? { confirmNoCoexistence: true } : {}),
       });
       setConnected(res.data?.businessPhoneNumber || "número de WhatsApp");
     } catch (err) {
+      // El código de Facebook ya se gastó: si acepta, se abre Meta otra vez.
+      if (!confirmNoCoexistence && needsCoexistenceConfirmation(err)) {
+        setPendingRetry(() => () => connectWithFacebook(true));
+        return;
+      }
       setError(
         err instanceof EmbeddedSignupCancelledError ? err.message : integrationsErrorMessage(err),
       );
@@ -197,6 +215,20 @@ export default function AjustesWhatsAppCard() {
         busy={signingUp}
         disabled={!storeId || saving}
         onConnect={() => void connectWithFacebook()}
+      />
+      <NoCoexistenceDialog
+        open={!!pendingRetry}
+        onCancel={() => {
+          setPendingRetry(null);
+          setSaving(false);
+          setSigningUp(false);
+          setError("No se conectó el número.");
+        }}
+        onConfirm={() => {
+          const retry = pendingRetry;
+          setPendingRetry(null);
+          if (retry) void retry();
+        }}
       />
       <p className="text-xs font-medium">O con datos manuales</p>
       <form

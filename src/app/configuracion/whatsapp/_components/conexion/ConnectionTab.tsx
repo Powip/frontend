@@ -6,6 +6,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { listWhatsAppTemplates } from "@/features/whatsapp/api/templates.api";
 import {
   actOnWhatsAppAssistedItem,
+  assignWhatsAppNumber,
+  listWhatsAppCoexistence,
+  setPrimaryWhatsAppNumber,
+  syncWhatsAppAppData,
   getWhatsAppContingency,
   getWhatsAppPricing,
   getWhatsAppTestRunStatus,
@@ -37,7 +41,11 @@ import type { WhatsAppResourceState as ResourceState } from "@/features/whatsapp
 import type { WhatsAppTemplate } from "@/features/whatsapp/models/template.model";
 import { resolveEffectivePermissions } from "@/features/whatsapp/utils/whatsapp-permissions.util";
 import { ConnectionView } from "./ConnectionView";
-import { signupUnavailableReason, type ConnectionMutations } from "./connection-types";
+import {
+  signupUnavailableReason,
+  type ConnectionMutations,
+  type NumberRoleChoice,
+} from "./connection-types";
 import { launchEmbeddedSignup } from "@/lib/metaEmbeddedSignup";
 import { completeEmbeddedSignup, getEmbeddedSignupConfig } from "@/services/crmTeamService";
 import {
@@ -180,6 +188,12 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
     refetchInterval: 30_000,
   });
   const agents = useWhatsAppStoreAgents(activeStoreId, !!activeStoreId);
+  // Coexistencia: números que siguen en la app del celular (historial una vez, en 24 h).
+  const coexistenceQuery = useQuery({
+    queryKey: ["whatsapp", "coexistence"],
+    queryFn: listWhatsAppCoexistence,
+    retry: false,
+  });
 
   const usage = toResource<WhatsAppUsageSummary>(usageQuery, "No se pudo cargar el uso del mes.");
   const pricing = toResource<WhatsAppPricing>(pricingQuery, "No se pudieron cargar las tarifas.");
@@ -263,6 +277,7 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
   const reloadAfterChange = async () => {
     await loadConnectionData();
     await queryClient.invalidateQueries({ queryKey: ["whatsapp", "status"] });
+    await queryClient.invalidateQueries({ queryKey: ["whatsapp", "coexistence"] });
   };
 
   useEffect(() => {
@@ -285,6 +300,19 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
     !!LOCAL_TEST_WABA.phoneNumberId &&
     !!LOCAL_TEST_WABA.accessToken;
   const signupAvailable = Boolean(signupConfigQuery.data?.enabled) || hasLocalTestWaba;
+  // Tipo de número elegido en el alta: «tienda» lo marca principal de la tienda y
+  // «vendedora» se lo asigna. «empresa» ya viaja como asCompanyDefault.
+  const applyNumberRole = async (
+    accountId: string | undefined,
+    { role, seller }: Pick<NumberRoleChoice, "role" | "seller">,
+  ) => {
+    if (!accountId) return;
+    if (role === "store") await setPrimaryWhatsAppNumber(accountId);
+    if (role === "seller" && seller) {
+      await assignWhatsAppNumber(accountId, { userId: seller.id, userName: seller.name });
+    }
+  };
+
   const mutations: ConnectionMutations = {
     refresh: async (accountId) => {
       const id = accountId || currentAccountId();
@@ -351,18 +379,45 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
       await actOnWhatsAppAssistedItem(itemId, "discard", reason);
       await queryClient.invalidateQueries({ queryKey: assistedKey });
     },
-    startSignup: async () => {
+    assignNumber: async ({ accountId, userId, userName }) => {
+      await assignWhatsAppNumber(accountId, { userId, userName });
+      await reloadAfterChange();
+    },
+    setPrimary: async (accountId) => {
+      await setPrimaryWhatsAppNumber(accountId);
+      await reloadAfterChange();
+    },
+    syncAppData: async (accountId) => {
+      await syncWhatsAppAppData(accountId);
+      await queryClient.invalidateQueries({ queryKey: ["whatsapp", "coexistence"] });
+    },
+    connectManual: async ({ role, seller, confirmNoCoexistence, ...input }) => {
+      const saved = await connectCustomWaba(token, {
+        ...input,
+        ...(role === "company" ? { asCompanyDefault: true } : {}),
+        ...(confirmNoCoexistence ? { confirmNoCoexistence: true } : {}),
+      });
+      await applyNumberRole(saved?.data?.id, { role, seller });
+      await reloadAfterChange();
+    },
+    startSignup: async ({ mode, role, seller, confirmNoCoexistence } = { storeId: "", mode: "api" }) => {
       // Embedded Signup de Meta (FB.login con config_id y code), el mismo que usa Ventas por chat.
+      // mode "coex": el número sigue en la app WhatsApp Business del celular (coexistencia).
       const config = signupConfigQuery.data;
+      const coexistence = mode === "coex";
       if (config?.enabled) {
         if (!activeStoreId) throw new Error("Elige una tienda antes de conectar.");
-        const shared = await launchEmbeddedSignup(config);
-        await completeEmbeddedSignup({
+        const shared = await launchEmbeddedSignup(config, { coexistence });
+        const saved = await completeEmbeddedSignup({
           storeId: activeStoreId,
           code: shared.code,
           ...(shared.wabaId ? { wabaId: shared.wabaId } : {}),
           ...(shared.phoneNumberId ? { phoneNumberId: shared.phoneNumberId } : {}),
+          ...(coexistence ? { coexistence: true } : {}),
+          ...(role === "company" ? { asCompanyDefault: true } : {}),
+          ...(confirmNoCoexistence ? { confirmNoCoexistence: true } : {}),
         });
+        await applyNumberRole(saved?.data?.id, { role, seller });
         await reloadAfterChange();
         return;
       }
@@ -376,13 +431,16 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
         );
       }
 
-      await connectCustomWaba(token, {
+      const saved = await connectCustomWaba(token, {
         storeId: activeStoreId,
         wabaId: LOCAL_TEST_WABA.wabaId,
         phoneNumberId: LOCAL_TEST_WABA.phoneNumberId,
         accessToken: LOCAL_TEST_WABA.accessToken,
         businessPhoneNumber: LOCAL_TEST_WABA.businessPhoneNumber,
+        ...(role === "company" ? { asCompanyDefault: true } : {}),
+        ...(confirmNoCoexistence ? { confirmNoCoexistence: true } : {}),
       });
+      await applyNumberRole(saved?.data?.id, { role, seller });
       await reloadAfterChange();
     },
   };
@@ -413,6 +471,7 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
       signupAvailable={signupAvailable}
       signupUnavailableReason={signupUnavailableReason(signupConfigQuery.data?.missing)}
       mutations={mutations}
+      coexistence={coexistenceQuery.data ?? []}
       onRetry={retryAll}
     />
   );

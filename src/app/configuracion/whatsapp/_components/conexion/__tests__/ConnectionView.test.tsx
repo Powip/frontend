@@ -218,7 +218,12 @@ describe("Números por tienda y Embedded Signup", () => {
     );
     await user.click(screen.getByRole("button", { name: "Conectar número de KUNCA" }));
     await user.click(screen.getByRole("button", { name: "Continuar con Facebook" }));
-    expect(startSignup).toHaveBeenCalledWith({ storeId: "store-kunca", mode: "api" });
+    // Número dedicado: antes de abrir Meta se avisa que deja la app del celular.
+    expect(startSignup).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole("button", { name: "Sí, continuar" }));
+    expect(startSignup).toHaveBeenCalledWith(
+      expect.objectContaining({ storeId: "store-kunca", mode: "api", confirmNoCoexistence: true }),
+    );
     expect(await screen.findByRole("alert")).toHaveTextContent("Cerraste la ventana de Meta.");
     expect(screen.queryByText(/POWIP confirmó la conexión/)).not.toBeInTheDocument();
   });
