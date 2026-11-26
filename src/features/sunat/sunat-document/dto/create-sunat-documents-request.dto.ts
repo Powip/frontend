@@ -16,6 +16,8 @@ export interface SunatDocumentLineItemRequestDto {
   discountAmount: number;
   unitCode: UnitCode;
   taxType: SunatTaxAffectationType;
+  /** Regalo (13/31): valor referencial unitario sin IGV. */
+  referenceUnitValue?: number;
 }
 
 export interface SunatDocumentCustomerRequestDto {

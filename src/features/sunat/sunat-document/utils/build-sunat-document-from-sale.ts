@@ -10,6 +10,7 @@ import {
 } from "../enums/sunat-document.enums";
 import type { CreateSunatDocumentsFormValues } from "../schemas/create-sunat-documents.schema";
 import { calculateSunatDocumentTotals } from "./calculate-sunat-document-totals";
+import { markGiftCandidates } from "./gift-lines";
 
 type SunatDocument = CreateSunatDocumentsFormValues["documents"][number];
 
@@ -210,7 +211,7 @@ function createItems(sale: Order): SunatItem[] {
     grossLineCents.map((gross, index) => gross - ownDiscountCents[index]),
   );
 
-  const productItems: SunatItem[] = sale.items.map((item, index) => {
+  const saleProductItems: SunatItem[] = sale.items.map((item, index) => {
     const quantity = Number(item.quantity) || 0;
     const rawUnitPrice = Number(item.unitPrice) || 0;
     const { unitPrice, subtotal, discountAmount } = toNetLineAmounts(
@@ -232,6 +233,11 @@ function createItems(sale: Order): SunatItem[] {
       taxType,
     };
   });
+
+  // Gifts (isGift, price 0 or 100% discount) are only marked here: the user
+  // chooses on screen how they go (31 promoción / 13 aparte). Until then they
+  // stay as the sale had them.
+  const productItems = markGiftCandidates(saleProductItems, sale);
 
   const shippingRawTotal = Number(sale.shippingTotal ?? 0);
 

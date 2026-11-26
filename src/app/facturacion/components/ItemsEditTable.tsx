@@ -29,6 +29,7 @@ import {
   calculateSunatDocumentTotals,
   roundCurrency,
 } from "@/features/sunat/sunat-document/utils/calculate-sunat-document-totals";
+import { isGiftTaxType } from "@/features/sunat/sunat-document/utils/gift-lines";
 
 /**
  * `unitPrice` is deliberately stored at full (unrounded) precision when it
@@ -265,6 +266,10 @@ export function ItemsEditTable() {
                */
               const lineImporte = roundCurrency(roundCurrency(taxableBase) + lineTax);
 
+              // A gift (13/31) is charged S/ 0.00: its price is set in the
+              // gift panel, not here.
+              const isGift = isGiftTaxType(item.taxType);
+
               return (
                 <TableRow key={field.id}>
                   <TableCell>
@@ -272,6 +277,13 @@ export function ItemsEditTable() {
                       {...register(`documents.0.items.${index}.productName`)}
                       className="h-8 text-xs"
                     />
+                    {isGift && (
+                      <span className="mt-1 inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                        {item.taxType === SUNAT_TAX_AFFECTATION_TYPES.REGALO_APARTE
+                          ? "Regalo aparte"
+                          : "Regalo de promoción"}
+                      </span>
+                    )}
                   </TableCell>
 
                   <TableCell>
@@ -287,19 +299,27 @@ export function ItemsEditTable() {
                   </TableCell>
 
                   <TableCell>
-                    <AmountInput
-                      name={`documents.0.items.${index}.unitPrice`}
-                      control={control}
-                      label={`Precio unitario de ${item.productName}`}
-                    />
+                    {isGift ? (
+                      <span className="text-xs text-muted-foreground">0.00</span>
+                    ) : (
+                      <AmountInput
+                        name={`documents.0.items.${index}.unitPrice`}
+                        control={control}
+                        label={`Precio unitario de ${item.productName}`}
+                      />
+                    )}
                   </TableCell>
 
                   <TableCell>
-                    <AmountInput
-                      name={`documents.0.items.${index}.discountAmount`}
-                      control={control}
-                      label={`Descuento de ${item.productName}`}
-                    />
+                    {isGift ? (
+                      <span className="text-xs text-muted-foreground">0.00</span>
+                    ) : (
+                      <AmountInput
+                        name={`documents.0.items.${index}.discountAmount`}
+                        control={control}
+                        label={`Descuento de ${item.productName}`}
+                      />
+                    )}
                   </TableCell>
 
                   <TableCell className="text-right text-xs font-medium">
