@@ -41,7 +41,7 @@ import {
 import { cn } from "@/lib/utils";
 import { AppOnlyNumberDialog } from "./AppOnlyNumberDialog";
 import { AssistedQueueSection } from "./AssistedQueueSection";
-import { ChangeConnectionTypeDialog } from "./ChangeConnectionTypeDialog";
+import { ChangeConnectionTypeDialog, changeWarnings } from "./ChangeConnectionTypeDialog";
 import { ConnectedNumberSection } from "./ConnectedNumberSection";
 import { ConnectionTypeSection } from "./ConnectionTypeSection";
 import { ConnectNumberDialog, type SignupPhase } from "./ConnectNumberDialog";
@@ -199,6 +199,22 @@ export function ConnectionView({
     change?.storeId === store.id
       ? numbers.filter((item) => item.connectionType !== change.target)
       : [];
+  const openReconnect = (item: WhatsAppAccount, target: WhatsAppConnectionType) => {
+    setChange(null);
+    if (!item.phone?.startsWith("+")) {
+      setTypeNotice({
+        storeId: store.id,
+        text: "Powip no tiene el teléfono de este número. Toca «Actualizar» y vuelve a intentar.",
+      });
+      return;
+    }
+    setReconnect({
+      storeId: store.id,
+      mode: target === WHATSAPP_CONNECTION_TYPES.COEXISTENCE ? "coex" : "api",
+      phone: item.phone,
+      isCompanyDefault: !!item.isCompanyDefault,
+    });
+  };
   const requestChange = (target: WhatsAppConnectionType) => {
     setChange(null);
     if (numbers.length === 0) {
@@ -219,6 +235,11 @@ export function ConnectionView({
       return;
     }
     setTypeNotice(null);
+    // Un solo número y nada que perder: directo a la ventana de Meta, sin aviso vacío.
+    if (numbers.length === 1 && !changeWarnings(numbers[0].connectionType, target).length) {
+      openReconnect(numbers[0], target);
+      return;
+    }
     setChange({ storeId: store.id, target });
   };
 
@@ -362,22 +383,7 @@ export function ConnectionView({
           candidates={changeCandidates}
           askWhich={numbers.length > 1}
           switchToApp={mutations.switchToApp}
-          onReconnect={(item) => {
-            setChange(null);
-            if (!item.phone?.startsWith("+")) {
-              setTypeNotice({
-                storeId: store.id,
-                text: "Powip no tiene el teléfono de este número. Toca «Actualizar» y vuelve a intentar.",
-              });
-              return;
-            }
-            setReconnect({
-              storeId: store.id,
-              mode: change.target === WHATSAPP_CONNECTION_TYPES.COEXISTENCE ? "coex" : "api",
-              phone: item.phone,
-              isCompanyDefault: !!item.isCompanyDefault,
-            });
-          }}
+          onReconnect={(item) => openReconnect(item, change.target)}
           onClose={() => setChange(null)}
         />
       )}

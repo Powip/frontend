@@ -120,6 +120,17 @@ describe("Cambiar el modo desde las tarjetas", () => {
     );
   });
 
+  it("de «Solo app» a «API + app» no se pierde nada: abre la ventana directo", async () => {
+    const user = userEvent.setup();
+    const appNumber = { ...api, connectionType: "app_manual" as const };
+    render(view({ accounts: { kind: "ready", data: [appNumber] } }));
+
+    await user.click(card(COEX));
+
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toHaveTextContent("Volver a conectar +51987000111");
+  });
+
   it("con varios números pregunta cuál", async () => {
     const user = userEvent.setup();
     const switchToApp = jest.fn().mockResolvedValue(undefined);
