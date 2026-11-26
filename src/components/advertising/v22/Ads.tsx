@@ -531,9 +531,12 @@ export function AdvertisingAds() {
     setSyncing(true);
     setError(null);
     try {
+      // The import always brings the available history; from/to only name the exact range whose
+      // reach and frequency Meta must return. Asking for yesterday–today left the visible period
+      // without frequency, because those values cannot be added up from days.
       await adsWrite(identity, "post", "/meta/v22/module-sync", {
-        from: dayKey(subDays(parseISO(today), 1)),
-        to: today,
+        from: fromDate <= to ? fromDate : to,
+        to,
         ...(accountId !== "all" ? { accountId } : {}),
       });
       await refresh();
