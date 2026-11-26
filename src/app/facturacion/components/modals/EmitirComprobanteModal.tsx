@@ -5,9 +5,11 @@ import { AlertCircle, AlertTriangle, CheckCircle2, FileText, Loader2 } from "luc
 import { useEffect, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { EmisionPipeline } from "@/app/facturacion/components/EmisionPipeline";
+import { GiftChoicePanel } from "@/app/facturacion/components/GiftChoicePanel";
 import { IssuerSelectField } from "@/app/facturacion/components/IssuerSelectField";
 import { ItemsEditTable } from "@/app/facturacion/components/ItemsEditTable";
 import { VerifyIdentityButton } from "@/app/facturacion/components/VerifyIdentityButton";
+import { ZeroValueLinesAlert } from "@/app/facturacion/components/ZeroValueLinesAlert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -49,14 +51,12 @@ import { toCreateSunatDocumentsRequestDto } from "@/features/sunat/sunat-documen
 import type { CreateSunatDocumentsFormValues } from "@/features/sunat/sunat-document/schemas/create-sunat-documents.schema";
 import { createSunatDocumentsSchema } from "@/features/sunat/sunat-document/schemas/create-sunat-documents.schema";
 import { buildSunatDocumentFromSale } from "@/features/sunat/sunat-document/utils/build-sunat-document-from-sale";
-import {
-  describeLinesWithoutValue,
-  findLinesWithoutValue,
-} from "@/features/sunat/sunat-document/utils/find-lines-without-value";
+import { findLinesWithoutValue } from "@/features/sunat/sunat-document/utils/find-lines-without-value";
 import { getEmissionErrorMessage } from "@/features/sunat/sunat-document/utils/get-emission-error-message";
 import { useSunatDocumentSequences } from "@/features/sunat/sunat-document-sequence/hooks/use-sunat-document-sequences";
 import type { SunatDocumentSequence } from "@/features/sunat/sunat-document-sequence/models/sunat-document-sequence";
 import { useIssuerSelection } from "@/features/sunat/sunat-profile/hooks/use-issuer-selection";
+import { isNuevoRus, toSunatTaxRegime } from "@/features/sunat/sunat-profile/utils/tax-regime";
 
 const PIPELINE_STEPS = [
   "Generando XML UBL 2.1",
@@ -151,6 +151,14 @@ export default function EmitirComprobanteModal({
   const issuerProfileIdRef = useRef(issuerProfileIdSelected);
   issuerProfileIdRef.current = issuerProfileIdSelected;
 
+  // Nuevo RUS: the selected RUC only issues boletas and no line shows IGV.
+  const taxRegime = toSunatTaxRegime(issuer.selected?.taxRegime);
+  const nuevoRus = isNuevoRus(taxRegime);
+  const taxRegimeRef = useRef(taxRegime);
+  taxRegimeRef.current = taxRegime;
+  // Regime the form's document was built with (see the rebuild effect).
+  const builtTaxRegimeRef = useRef(taxRegime);
+
   // Powers the series auto-fill and the missing-correlativo warning below:
   // whichever sequence is marked `isDefault` for the selected tax document
   // type (configured from the Series tab) is what gets stamped on the
@@ -229,7 +237,8 @@ export default function EmitirComprobanteModal({
       return;
     }
 
-    const document = buildSunatDocumentFromSale(sale);
+    const document = buildSunatDocumentFromSale(sale, { taxRegime: taxRegimeRef.current });
+    builtTaxRegimeRef.current = taxRegimeRef.current;
 
     form.reset({
       documents: [{ ...document, sunatProfileId: issuerProfileIdRef.current }],
@@ -238,6 +247,27 @@ export default function EmitirComprobanteModal({
     setStep("form");
     setPipelineIndex(0);
   }, [isOpen, sale, form]);
+
+  // Switching to a RUC with another regime changes every line's tax type and
+  // the document type (Nuevo RUS: boleta without IGV), so the document is
+  // rebuilt from the sale. Switching between RUCs of the same regime keeps
+  // what the user edited.
+  useEffect(() => {
+    if (!isOpen || builtTaxRegimeRef.current === taxRegime) {
+      return;
+    }
+
+    builtTaxRegimeRef.current = taxRegime;
+
+    form.reset({
+      documents: [
+        {
+          ...buildSunatDocumentFromSale(sale, { taxRegime }),
+          sunatProfileId: issuerProfileIdRef.current,
+        },
+      ],
+    });
+  }, [isOpen, taxRegime, sale, form]);
 
   useEffect(() => {
     return () => {
@@ -450,9 +480,20 @@ export default function EmitirComprobanteModal({
                                 Boleta de Venta
                               </SelectItem>
 
-                              <SelectItem value={SUNAT_DOCUMENT_TYPES.INVOICE}>Factura</SelectItem>
+                              {!nuevoRus && (
+                                <SelectItem value={SUNAT_DOCUMENT_TYPES.INVOICE}>
+                                  Factura
+                                </SelectItem>
+                              )}
                             </SelectContent>
                           </Select>
+
+                          {nuevoRus && (
+                            <p className="text-xs text-muted-foreground">
+                              Este RUC está en el Nuevo RUS: solo emite boletas y sin IGV. El
+                              cliente paga lo mismo.
+                            </p>
+                          )}
 
                           <FormMessage />
                         </FormItem>
@@ -628,6 +669,8 @@ export default function EmitirComprobanteModal({
                       )}
                     </div>
 
+                    <GiftChoicePanel taxRegime={taxRegime} />
+
                     <FormField
                       control={form.control}
                       name="documents.0.items"
@@ -636,7 +679,7 @@ export default function EmitirComprobanteModal({
                           <FormLabel>Ítems del pedido</FormLabel>
 
                           <FormControl>
-                            <ItemsEditTable />
+                            <ItemsEditTable taxRegime={taxRegime} />
                           </FormControl>
 
                           <FormMessage />
@@ -644,20 +687,7 @@ export default function EmitirComprobanteModal({
                       )}
                     />
 
-                    {linesWithoutValue.length > 0 && (
-                      <div
-                        role="alert"
-                        className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm dark:border-red-900 dark:bg-red-950/40"
-                      >
-                        <span className="font-semibold">
-                          No se puede emitir: {describeLinesWithoutValue(linesWithoutValue)}{" "}
-                          {linesWithoutValue.length === 1 ? "queda" : "quedan"} en S/ 0.00.{" "}
-                        </span>
-                        SUNAT rechaza el comprobante completo cuando una línea no tiene valor (error
-                        3105) y el número se pierde. Ponle su valor a esa línea o quítala con el
-                        ícono de papelera.
-                      </div>
-                    )}
+                    <ZeroValueLinesAlert taxRegime={taxRegime} />
 
                     <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm">
                       <div className="flex justify-between text-muted-foreground">
@@ -688,13 +718,16 @@ export default function EmitirComprobanteModal({
                         </div>
                       )}
 
-                      <div className="mt-1 flex justify-between text-muted-foreground">
-                        <span>IGV (18%)</span>
+                      {/* A Nuevo RUS boleta must not show any tax. */}
+                      {!nuevoRus && (
+                        <div className="mt-1 flex justify-between text-muted-foreground">
+                          <span>IGV (18%)</span>
 
-                        <span>
-                          {totals?.currency ?? "PEN"} {Number(totals?.taxTotal ?? 0).toFixed(2)}
-                        </span>
-                      </div>
+                          <span>
+                            {totals?.currency ?? "PEN"} {Number(totals?.taxTotal ?? 0).toFixed(2)}
+                          </span>
+                        </div>
+                      )}
 
                       <div className="mt-2 flex justify-between border-t pt-2 text-base font-bold">
                         <span>Total</span>
@@ -726,7 +759,8 @@ export default function EmitirComprobanteModal({
                       isPending ||
                       isMissingDefaultSequence ||
                       isIssuerBlocked ||
-                      linesWithoutValue.length > 0
+                      linesWithoutValue.length > 0 ||
+                      (nuevoRus && isInvoice)
                     }
                   >
                     {isPending ? (

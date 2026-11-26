@@ -1,449 +1,807 @@
 "use client";
 
-import { AdvertisingCompanySpend } from "@/components/advertising/AdvertisingCompanySpend";
+/**
+ * Gastos y costos (FEAT-34 C1, C4, L1).
+ *
+ * - Los gastos son mensuales (ms-company). Arriba se ve lo que le toca al periodo elegido con `prorratearGastos`:
+ *   cada gasto × días del periodo en su mes ÷ días del mes (D8). Antes se restaba el mes entero con «Hoy» o «Semana».
+ * - La lista y el formulario trabajan sobre un mes elegido con selector de mes y año; arrancan en el mes del periodo
+ *   (antes el formulario quedaba en el mes en que se abrió la pantalla y no había año).
+ * - Compra de mercadería (INVERSION) va aparte: no entra al resultado, el costo ya se cuenta cuando se vende.
+ * - Costo de lo vendido = `resultados.costoProducto`, con el aviso de ventas sin costo (C1).
+ * - La publicidad conectada vive en la sección Publicidad; acá solo se muestra el total que entra al resultado.
+ */
 
-import { useCallback, useEffect, useState } from "react";
-import { useAuth } from "@/contexts/AuthContext";
-import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
-import { createGasto, deleteGasto, getGastos, updateGasto } from "@/api/Admin";
-import { getOrdersByCompany } from "@/api/Ventas";
-import { getProducts } from "@/api/Productos";
-import { soloEntregados } from "../_lib/realData";
-import { CategoriaGasto, ICreateGastoDto, IGastoOperativo } from "@/interfaces/IAdmin";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Pencil, Trash2, X } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Pencil, Plus, Trash2, X } from "lucide-react";
+import { type ReactNode, useEffect, useId, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { createGasto, deleteGasto, updateGasto } from "@/api/Admin";
+import { getProducts } from "@/api/Productos";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
+import { useAdminGastos } from "@/hooks/useAdminQueries";
+import type { CategoriaGasto, ICreateGastoDto, IGastoOperativo } from "@/interfaces/IAdmin";
+import { cn } from "@/lib/utils";
+import {
+  AdminTable,
+  AvisoCostos,
+  type ColumnaTabla,
+  claseBotonPrimario,
+  claseBotonSecundario,
+  claseInput,
+  formatPercent,
+  formatSoles,
+  formatSolesDecimales,
+  KpiCard,
+  type LineaCascada,
+  PanelCard,
+  PanelError,
+  PanelSkeleton,
+  SIN_DATO,
+  TablaCascada,
+} from "../_components/ui";
+import {
+  aDiaKey,
+  diasDelMes,
+  etiquetaMes,
+  etiquetaPeriodo,
+  MESES_CORTOS,
+  MESES_LARGOS,
+  mesesDelPeriodo,
+  partes,
+} from "../_lib/periodo";
+import { CATEGORIAS_FIJAS, NOMBRE_CATEGORIA, prorratearGastos } from "../_lib/resultados";
+import { notaFlete } from "../_lib/servidor";
+import { type DatosPeriodo, useAdminContexto, useResultadosPeriodo } from "../_lib/useResultados";
 
-const CATEGORIAS: { value: CategoriaGasto; label: string }[] = [
-  { value: "PLANILLA", label: "Personal / Planilla" },
-  { value: "HERRAMIENTAS", label: "Herramientas + Oficina" },
-  { value: "PUBLICIDAD", label: "Publicidad" },
-  { value: "COURIER_PROPIO", label: "Courier Propio" },
-  { value: "OTRO", label: "Otro" },
-];
+const CATEGORIAS_FORM: CategoriaGasto[] = [...CATEGORIAS_FIJAS, "PUBLICIDAD", "INVERSION"];
+const ANIO_MINIMO = 2020;
 
-// INVERSION es la compra de mercadería por prenda. No es gasto operativo:
-// el costo de la prenda ya entra al COGS cuando se vende, así que no se
-// suma a fijos/variables ni al P&L. Se muestra aparte, agrupado por prenda.
-const INVERSION: { value: CategoriaGasto; label: string } = { value: "INVERSION", label: "Inversión (por prenda)" };
-const CATEGORIAS_FORM = [...CATEGORIAS, INVERSION];
+const comoError = (error: unknown) => (error instanceof Error ? error : new Error("Error desconocido"));
 
-const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-
-function fmt(n: number) {
-  return `S/ ${Number(n).toLocaleString("es-PE", { minimumFractionDigits: 2 })}`;
+function mensajeError(error: unknown, porDefecto: string): string {
+  const mensaje = (error as { response?: { data?: { message?: unknown } } } | null)?.response?.data?.message;
+  const lista = (Array.isArray(mensaje) ? mensaje : [mensaje]).filter(
+    (m): m is string => typeof m === "string" && m.trim() !== "",
+  );
+  return lista.length ? lista.join(" · ") : porDefecto;
 }
 
-const emptyForm: ICreateGastoDto = { categoria: "OTRO", descripcion: "", monto: 0, mes: new Date().getMonth() + 1, anio: new Date().getFullYear() };
+const aNumero = (texto: string) => Number(texto.trim().replace(",", "."));
+
+/** null = válido: mayor que 0 y con hasta 2 decimales (ms-company). */
+function errorMonto(texto: string): string | null {
+  const limpio = texto.trim();
+  if (!limpio) return "Obligatorio";
+  if (!/^\d+(?:[.,]\d{0,2})?$/.test(limpio)) return "Número con hasta 2 decimales";
+  if (aNumero(limpio) <= 0) return "Tiene que ser mayor que 0";
+  return null;
+}
+
+const mayuscula = (texto: string) => texto.charAt(0).toUpperCase() + texto.slice(1);
+
+const claseEtiqueta = "text-[11px] font-semibold uppercase tracking-[0.06em] text-pc-text-muted";
+
+// ---- Resumen del periodo --------------------------------------------------------------------
+
+/** «26 de 30 días de noviembre» o, con varios meses, un tramo corto por mes. */
+function textoReparto(desde: string, hasta: string): string {
+  const tramos = mesesDelPeriodo(desde, hasta);
+  if (tramos.length === 0) return "";
+  if (tramos.length === 1) {
+    const t = tramos[0];
+    return t.dias === t.diasMes
+      ? `${mayuscula(MESES_LARGOS[t.mes - 1])} completo`
+      : `${t.dias} de ${t.diasMes} días de ${MESES_LARGOS[t.mes - 1]}`;
+  }
+  if (tramos.length > 3) return `Cada mes según sus días dentro del periodo (${tramos.length} meses)`;
+  return tramos.map((t) => `${MESES_CORTOS[t.mes - 1]}: ${t.dias} de ${t.diasMes} días`).join(" · ");
+}
+
+function ResumenPeriodo({ datos }: { datos: DatosPeriodo }) {
+  if (datos.cargando) return <PanelSkeleton variant="kpis" label="resumen de gastos y costos" />;
+  if (datos.error) return <PanelError error={comoError(datos.error)} />;
+  const r = datos.resultados;
+  const deLasVentas = (monto: number) =>
+    r.ventas > 0 ? `${formatPercent(monto / r.ventas, 1)} de las ventas` : "Sin ventas en el periodo";
+  const totalCostos = r.ventas - r.utilidadOperativa;
+  const publicidadSub =
+    r.publicidad.conectada === null
+      ? `Cargada en Gastos ${formatSoles(r.publicidad.gastos)} · cuentas conectadas sin dato`
+      : `Conectada ${formatSoles(r.publicidad.conectada)} · cargada en Gastos ${formatSoles(r.publicidad.gastos)}`;
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <KpiCard
+          label="Gastos fijos del periodo"
+          value={formatSoles(r.gastosFijos)}
+          sub={`Le toca al periodo: ${textoReparto(datos.desde, datos.hasta)}`}
+        />
+        <KpiCard label="Costo de lo vendido" value={formatSoles(r.costoProducto)} sub={deLasVentas(r.costoProducto)} />
+        <KpiCard label="Publicidad del periodo" value={formatSoles(r.publicidad.total)} sub={publicidadSub} />
+        <KpiCard label="Total de costos y gastos" value={formatSoles(totalCostos)} sub={deLasVentas(totalCostos)} />
+      </div>
+      <AvisoCostos costo={r.costo} />
+    </>
+  );
+}
+
+// ---- Buscador de prenda (compra de mercadería) ----------------------------------------------
 
 type Prenda = { id: string; name: string; sku?: string };
 
 function BuscadorPrenda({ value, onChange }: { value: Prenda | null; onChange: (p: Prenda | null) => void }) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Prenda[]>([]);
-  const [open, setOpen] = useState(false);
-  const [searching, setSearching] = useState(false);
+  const [resultados, setResultados] = useState<Prenda[]>([]);
+  const [abierto, setAbierto] = useState(false);
+  const [buscando, setBuscando] = useState(false);
+  const id = useId();
 
   useEffect(() => {
-    const q = query.trim();
-    if (q.length < 2) { setResults([]); return; }
-    let cancel = false;
-    setSearching(true);
-    const t = setTimeout(() => {
-      getProducts({ name: q })
-        .then((items) => { if (!cancel) setResults(items.slice(0, 8).map((p) => ({ id: p.id, name: p.name, sku: p.sku }))); })
-        .catch(() => { if (!cancel) setResults([]); })
-        .finally(() => { if (!cancel) setSearching(false); });
+    const texto = query.trim();
+    if (texto.length < 2) {
+      setResultados([]);
+      return;
+    }
+    let cancelado = false;
+    setBuscando(true);
+    const espera = setTimeout(() => {
+      getProducts({ name: texto })
+        .then((items) => {
+          if (!cancelado) setResultados(items.slice(0, 8).map((p) => ({ id: p.id, name: p.name, sku: p.sku })));
+        })
+        .catch(() => {
+          if (!cancelado) setResultados([]);
+        })
+        .finally(() => {
+          if (!cancelado) setBuscando(false);
+        });
     }, 300);
-    return () => { cancel = true; clearTimeout(t); };
+    return () => {
+      cancelado = true;
+      clearTimeout(espera);
+    };
   }, [query]);
 
-  if (value) {
-    return (
-      <div className="flex h-9 items-center justify-between gap-2 rounded-md border px-3 text-sm">
-        <span className="truncate" title={value.name}>{value.name}</span>
-        <button type="button" aria-label="Quitar prenda" className="text-muted-foreground hover:text-foreground" onClick={() => onChange(null)}>
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div className="relative">
-      <Input
-        placeholder="Buscar prenda…"
-        value={query}
-        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
-      />
-      {open && query.trim().length >= 2 && (
-        <div className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-md border bg-popover shadow-md">
-          {searching ? (
-            <p className="px-3 py-2 text-xs text-muted-foreground">Buscando…</p>
-          ) : results.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-muted-foreground">Sin resultados</p>
-          ) : results.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              className="flex w-full flex-col items-start px-3 py-2 text-left text-sm hover:bg-muted"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => { onChange(p); setQuery(""); setOpen(false); }}
-            >
-              <span>{p.name}</span>
-              {p.sku && <span className="text-[11px] text-muted-foreground">{p.sku}</span>}
-            </button>
-          ))}
+    <div className="flex min-w-0 flex-col gap-1">
+      <label htmlFor={id} className={claseEtiqueta}>
+        Prenda (opcional)
+      </label>
+      {value ? (
+        <div className="flex h-8 items-center justify-between gap-2 rounded-lg border border-pc-border bg-pc-card px-2.5 text-xs text-pc-text">
+          <span className="truncate" title={value.name}>
+            {value.name}
+          </span>
+          <button
+            type="button"
+            aria-label="Quitar prenda"
+            className="rounded text-pc-text-muted outline-none hover:text-pc-text focus-visible:ring-2 focus-visible:ring-pc-primary"
+            onClick={() => onChange(null)}
+          >
+            <X className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        </div>
+      ) : (
+        <div className="relative">
+          <input
+            id={id}
+            placeholder="Buscar prenda…"
+            value={query}
+            autoComplete="off"
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setAbierto(true);
+            }}
+            onFocus={() => setAbierto(true)}
+            onBlur={() => setTimeout(() => setAbierto(false), 150)}
+            className={cn(claseInput, "w-full")}
+          />
+          {abierto && query.trim().length >= 2 && (
+            <div className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-pc-border bg-pc-card shadow-md">
+              {buscando ? (
+                <p className="px-3 py-2 text-xs text-pc-text-muted">Buscando…</p>
+              ) : resultados.length === 0 ? (
+                <p className="px-3 py-2 text-xs text-pc-text-muted">Sin resultados</p>
+              ) : (
+                resultados.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className="flex w-full flex-col items-start px-3 py-2 text-left text-xs text-pc-text hover:bg-pc-surface-muted"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      onChange(p);
+                      setQuery("");
+                      setAbierto(false);
+                    }}
+                  >
+                    <span>{p.name}</span>
+                    {p.sku && <span className="text-[11px] text-pc-text-muted">{p.sku}</span>}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-export default function GastosPage() {
-  const { auth } = useAuth();
-  const { fromDate, toDate } = useAdminPeriod();
-  const [gastos, setGastos] = useState<IGastoOperativo[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState<ICreateGastoDto>(emptyForm);
-  const [costos, setCostos] = useState({ ventas: 0, cogs: 0 });
-  const [loadingCostos, setLoadingCostos] = useState(true);
+// ---- Gastos del mes -------------------------------------------------------------------------
 
-  const fetchGastos = useCallback(async () => {
-    if (!auth?.company?.id || !auth?.accessToken) return;
-    setLoading(true);
-    try {
-      setGastos(await getGastos(auth.company.id, fromDate, toDate, auth.accessToken));
-    } catch {
-      toast.error("Error al cargar gastos");
-    } finally {
-      setLoading(false);
-    }
-  }, [auth, fromDate, toDate]);
+interface FormGasto {
+  id: string | null;
+  categoria: CategoriaGasto;
+  descripcion: string;
+  monto: string;
+  mes: number;
+  anio: number;
+  productId: string | null;
+  productName: string | null;
+  /** Prenda que tenía al abrir la edición (para desligarla si cambia de categoría). */
+  teniaPrenda: boolean;
+}
 
-  useEffect(() => { fetchGastos(); }, [fetchGastos]);
+const formVacio = (anio: number, mes: number): FormGasto => ({
+  id: null,
+  categoria: "OTRO",
+  descripcion: "",
+  monto: "",
+  mes,
+  anio,
+  productId: null,
+  productName: null,
+  teniaPrenda: false,
+});
 
-  useEffect(() => {
-    if (!auth?.company?.id) return;
-    setLoadingCostos(true);
-    getOrdersByCompany(auth.company.id, fromDate, toDate)
-      .then((orders: any[]) => {
-        const entregadas = soloEntregados(orders);
-        const ventas = entregadas.reduce((s, o) => s + Number(o.grandTotal || 0), 0);
-        const cogs = entregadas.reduce((s, o) => s + Number(o.costAmount || 0), 0);
-        setCostos({ ventas, cogs });
-      })
-      .catch(() => toast.error("Error al cargar costos"))
-      .finally(() => setLoadingCostos(false));
-  }, [auth?.company?.id, fromDate, toDate]);
+const formDeGasto = (g: IGastoOperativo): FormGasto => ({
+  id: g.id,
+  categoria: g.categoria,
+  descripcion: g.descripcion ?? "",
+  monto: String(Number(g.monto)),
+  mes: Number(g.mes),
+  anio: Number(g.anio),
+  productId: g.productId ?? null,
+  productName: g.productName ?? null,
+  teniaPrenda: !!g.productId,
+});
 
-  const handleSubmit = async () => {
-    if (!auth?.company?.id || !auth?.accessToken) return;
-    try {
-      if (editId) {
-        await updateGasto(auth.company.id, editId, form, auth.accessToken);
-        toast.success("Gasto actualizado");
-      } else {
-        await createGasto(auth.company.id, form, auth.accessToken);
-        toast.success("Gasto registrado");
-      }
-      setShowForm(false); setEditId(null); setForm(emptyForm); fetchGastos();
-    } catch { toast.error("Error al guardar gasto"); }
+function cuerpoDeForm(form: FormGasto): ICreateGastoDto {
+  const base: ICreateGastoDto = {
+    categoria: form.categoria,
+    descripcion: form.descripcion.trim(),
+    monto: aNumero(form.monto),
+    mes: form.mes,
+    anio: form.anio,
   };
+  if (form.categoria === "INVERSION") return { ...base, productId: form.productId, productName: form.productName };
+  // La prenda solo aplica a la compra de mercadería: si cambió de categoría, se desliga.
+  return form.teniaPrenda ? { ...base, productId: null, productName: null } : base;
+}
 
-  const handleEdit = (g: IGastoOperativo) => {
-    setEditId(g.id);
-    setForm({ categoria: g.categoria, descripcion: g.descripcion || "", monto: Number(g.monto), mes: g.mes, anio: g.anio, productId: g.productId ?? null, productName: g.productName ?? null });
-    setShowForm(true);
-  };
+function Pildora({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold", className)}>{children}</span>
+  );
+}
 
-  const handleDelete = async (id: string) => {
-    if (!auth?.company?.id || !auth?.accessToken) return;
-    try {
-      await deleteGasto(auth.company.id, id, auth.accessToken);
-      toast.success("Gasto eliminado"); fetchGastos();
-    } catch { toast.error("Error al eliminar gasto"); }
-  };
+function SelectorMes({
+  anio,
+  mes,
+  anios,
+  onChange,
+  etiqueta,
+}: {
+  anio: number;
+  mes: number;
+  anios: number[];
+  onChange: (valor: { anio: number; mes: number }) => void;
+  etiqueta: string;
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <select
+        aria-label={`Mes ${etiqueta}`}
+        value={mes}
+        onChange={(event) => onChange({ anio, mes: Number(event.target.value) })}
+        className={claseInput}
+      >
+        {MESES_LARGOS.map((nombre, i) => (
+          <option key={nombre} value={i + 1}>
+            {mayuscula(nombre)}
+          </option>
+        ))}
+      </select>
+      <select
+        aria-label={`Año ${etiqueta}`}
+        value={anio}
+        onChange={(event) => onChange({ anio: Number(event.target.value), mes })}
+        className={claseInput}
+      >
+        {anios.map((a) => (
+          <option key={a} value={a}>
+            {a}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
 
-  const totalesPorCategoria = CATEGORIAS.map((cat) => ({
-    ...cat,
-    total: gastos.filter((g) => g.categoria === cat.value).reduce((s, g) => s + Number(g.monto), 0),
-  }));
+function ResumenDelMes({
+  gastos,
+  anio,
+  mes,
+  desde,
+  hasta,
+}: {
+  gastos: IGastoOperativo[];
+  anio: number;
+  mes: number;
+  desde: string;
+  hasta: string;
+}) {
+  const delMes = (categoria: CategoriaGasto) =>
+    gastos.filter((g) => g.categoria === categoria).reduce((s, g) => s + (Number(g.monto) || 0), 0);
+  const prorrateo = prorratearGastos(gastos, desde, hasta);
+  const tramo = mesesDelPeriodo(desde, hasta).find((t) => t.anio === anio && t.mes === mes);
+  const fijosMes = CATEGORIAS_FIJAS.reduce((s, c) => s + delMes(c), 0);
+  const nombreMes = MESES_LARGOS[mes - 1];
 
-  const totalFijos = totalesPorCategoria
-    .filter((c) => c.value === "PLANILLA" || c.value === "HERRAMIENTAS")
-    .reduce((s, c) => s + c.total, 0);
-  const totalVariables = totalesPorCategoria
-    .filter((c) => c.value === "PUBLICIDAD" || c.value === "COURIER_PROPIO" || c.value === "OTRO")
-    .reduce((s, c) => s + c.total, 0);
-  const totalGeneral = totalFijos + totalVariables;
-  const pctFijos = totalGeneral > 0 ? (totalFijos / totalGeneral) * 100 : 0;
-  const pctVariables = totalGeneral > 0 ? (totalVariables / totalGeneral) * 100 : 0;
-  const pctCogsSobreVentas = costos.ventas > 0 ? (costos.cogs / costos.ventas) * 100 : 0;
-  const totalCostosYGastos = costos.cogs + totalGeneral;
-
-  const gastosInversion = gastos.filter((g) => g.categoria === "INVERSION");
-  const totalInversion = gastosInversion.reduce((s, g) => s + Number(g.monto), 0);
-  const inversionPorPrenda = Object.values(
-    gastosInversion.reduce<Record<string, { key: string; prenda: string; registros: number; total: number }>>((acc, g) => {
-      const key = g.productId ?? "sin-prenda";
-      const row = acc[key] ?? { key, prenda: g.productName || "Sin prenda", registros: 0, total: 0 };
-      row.registros += 1;
-      row.total += Number(g.monto);
-      acc[key] = row;
-      return acc;
-    }, {}),
-  ).sort((a, b) => b.total - a.total);
-  const esInversion = form.categoria === "INVERSION";
+  const filas: { clave: string; etiqueta: string; monto: number; periodo: number; total?: boolean }[] = [
+    ...CATEGORIAS_FIJAS.map((c) => ({
+      clave: c,
+      etiqueta: NOMBRE_CATEGORIA[c],
+      monto: delMes(c),
+      periodo: prorrateo.porCategoria[c],
+    })),
+    { clave: "fijos", etiqueta: "Gastos fijos", monto: fijosMes, periodo: prorrateo.fijos, total: true },
+    {
+      clave: "PUBLICIDAD",
+      etiqueta: "Publicidad cargada",
+      monto: delMes("PUBLICIDAD"),
+      periodo: prorrateo.publicidad,
+    },
+    {
+      clave: "total",
+      etiqueta: "Total que entra al resultado",
+      monto: fijosMes + delMes("PUBLICIDAD"),
+      periodo: prorrateo.fijos + prorrateo.publicidad,
+      total: true,
+    },
+  ];
 
   return (
-    <div className="p-8 space-y-6">
-      <AdvertisingCompanySpend from={fromDate} to={toDate} />
-      <p className="text-sm text-muted-foreground">
-        Estos indicadores usan registros manuales por conciliar.
+    <div className="space-y-3">
+      <table className="w-full border-collapse text-[12.5px]">
+        <caption className="sr-only">Gastos de {etiquetaMes(anio, mes, true)} por categoría</caption>
+        <thead>
+          <tr className="text-[11px] uppercase tracking-wide text-pc-text-muted">
+            <th scope="col" className="py-1.5 text-left font-semibold">
+              Categoría
+            </th>
+            <th scope="col" className="py-1.5 text-right font-semibold">
+              Del mes
+            </th>
+            <th scope="col" className="py-1.5 text-right font-semibold">
+              Le toca al periodo
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {filas.map((fila) => (
+            <tr
+              key={fila.clave}
+              className={cn("border-t border-pc-border-soft", fila.total && "bg-pc-surface-muted font-bold")}
+            >
+              <th scope="row" className="py-2 pl-1 text-left font-medium text-pc-text">
+                {fila.etiqueta}
+              </th>
+              <td className="py-2 text-right tabular-nums">{formatSoles(fila.monto)}</td>
+              <td className="py-2 pr-1 text-right tabular-nums">{formatSoles(fila.periodo)}</td>
+            </tr>
+          ))}
+          <tr className="border-t border-pc-border text-pc-text-muted">
+            <th scope="row" className="py-2 pl-1 text-left font-medium">
+              {NOMBRE_CATEGORIA.INVERSION}
+            </th>
+            <td className="py-2 text-right tabular-nums">{formatSoles(delMes("INVERSION"))}</td>
+            <td className="py-2 pr-1 text-right text-[11px]">No entra</td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="text-xs leading-relaxed text-pc-text-muted">
+        {tramo
+          ? tramo.dias === tramo.diasMes
+            ? `El periodo toma ${nombreMes} completo.`
+            : `Al periodo le tocan ${tramo.dias} de ${tramo.diasMes} días de ${nombreMes}: cada gasto del mes se multiplica por ${tramo.dias}/${tramo.diasMes}.`
+          : `${mayuscula(nombreMes)} ${anio} no está dentro del periodo elegido (${etiquetaPeriodo(desde, hasta)}): no le toca nada.`}{" "}
+        La compra de mercadería va aparte: no se resta en el resultado porque el costo del producto ya se cuenta cuando
+        se vende.
       </p>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <Card className="text-center">
-          <CardContent className="pt-4 pb-3">
-            <p className="text-xs text-muted-foreground mb-1">Costo de mercadería vendida (COGS)</p>
-            <p className="text-lg font-bold font-mono">{loadingCostos ? "…" : fmt(costos.cogs)}</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">{loadingCostos ? "" : `${pctCogsSobreVentas.toFixed(1)}% sobre ventas entregadas`}</p>
-          </CardContent>
-        </Card>
-        <Card className="text-center">
-          <CardContent className="pt-4 pb-3">
-            <p className="text-xs text-muted-foreground mb-1">Gastos operativos</p>
-            <p className="text-lg font-bold font-mono">{fmt(totalGeneral)}</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Fijos + variables, ver detalle abajo</p>
-          </CardContent>
-        </Card>
-        <Card className="text-center border-primary/40">
-          <CardContent className="pt-4 pb-3">
-            <p className="text-xs text-muted-foreground mb-1">Total costos + gastos</p>
-            <p className="text-lg font-bold font-mono">{loadingCostos ? "…" : fmt(totalCostosYGastos)}</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">COGS + gastos operativos del periodo</p>
-          </CardContent>
-        </Card>
-      </div>
+    </div>
+  );
+}
 
-      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Gastos operativos por categoría</p>
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        {totalesPorCategoria.map((cat) => (
-          <Card key={cat.value} className="text-center">
-            <CardContent className="pt-4 pb-3">
-              <p className="text-xs text-muted-foreground mb-1">{cat.label}</p>
-              <p className="text-lg font-bold font-mono">{fmt(cat.total)}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+function GastosDelMes({ desde, hasta }: { desde: string; hasta: string }) {
+  const { companyId, token, hoy } = useAdminContexto();
+  const qc = useQueryClient();
+  const [anioFin, mesFin] = partes(hasta);
+  const [vista, setVista] = useState({ anio: anioFin, mes: mesFin });
+  const [form, setForm] = useState<FormGasto | null>(null);
+  const [aBorrar, setABorrar] = useState<IGastoOperativo | null>(null);
+  const ids = { categoria: useId(), descripcion: useId(), monto: useId() };
 
-      {showForm && (
-        <Card>
-          <CardHeader><CardTitle className="text-sm">{editId ? "Editar gasto" : "Registrar gasto"}</CardTitle></CardHeader>
-          <CardContent className={`grid grid-cols-2 gap-3 ${esInversion ? "md:grid-cols-6" : "md:grid-cols-5"}`}>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-muted-foreground font-medium">Categoría</label>
-              <Select
-                value={form.categoria}
-                onValueChange={(v) => setForm((f) => ({
-                  ...f,
-                  categoria: v as CategoriaGasto,
-                  // La prenda solo aplica a INVERSION: al cambiar a otra categoría se desliga.
-                  ...(v !== "INVERSION" && f.productId ? { productId: null, productName: null } : {}),
-                }))}
+  const inicio = aDiaKey(vista.anio, vista.mes, 1);
+  const fin = aDiaKey(vista.anio, vista.mes, diasDelMes(vista.anio, vista.mes));
+  const gastosQ = useAdminGastos(companyId, inicio, fin, token);
+  const gastos = useMemo(
+    () =>
+      (gastosQ.data ?? []).filter((g) => Number(g.anio) === vista.anio && Number(g.mes) === vista.mes),
+    [gastosQ.data, vista.anio, vista.mes],
+  );
+
+  const anioHoy = partes(hoy)[0];
+  const anios = useMemo(() => {
+    const lista = new Set<number>([vista.anio, form?.anio ?? vista.anio]);
+    for (let a = Math.max(ANIO_MINIMO, anioHoy - 4); a <= anioHoy + 1; a++) lista.add(a);
+    return [...lista].sort((a, b) => b - a);
+  }, [anioHoy, vista.anio, form?.anio]);
+
+  const invalidar = () => {
+    void qc.invalidateQueries({ queryKey: ["admin-gastos"] });
+    void qc.invalidateQueries({ queryKey: ["admin-anual-gastos"] });
+  };
+
+  const guardar = useMutation({
+    mutationFn: (f: FormGasto) =>
+      f.id ? updateGasto(companyId, f.id, cuerpoDeForm(f), token) : createGasto(companyId, cuerpoDeForm(f), token),
+    onSuccess: (_, f) => {
+      toast.success(`${f.id ? "Gasto actualizado" : "Gasto registrado"} en ${etiquetaMes(f.anio, f.mes, true)}`);
+      setForm(null);
+      setVista({ anio: f.anio, mes: f.mes });
+      invalidar();
+    },
+    onError: (error) => toast.error(mensajeError(error, "No se pudo guardar el gasto")),
+  });
+  const borrar = useMutation({
+    mutationFn: (id: string) => deleteGasto(companyId, id, token),
+    onSuccess: () => {
+      toast.success("Gasto eliminado");
+      invalidar();
+    },
+    onError: (error) => toast.error(mensajeError(error, "No se pudo eliminar el gasto")),
+  });
+
+  const errorDeMonto = form && form.monto.trim() !== "" ? errorMonto(form.monto) : null;
+  const puedeGuardar = !!form && errorMonto(form.monto) === null && !guardar.isPending;
+  const totalMes = gastos.reduce((s, g) => s + (Number(g.monto) || 0), 0);
+  const hayInversion = gastos.some((g) => g.categoria === "INVERSION");
+
+  const columnas: ColumnaTabla<IGastoOperativo>[] = [
+    {
+      id: "categoria",
+      header: "Categoría",
+      align: "left",
+      cell: (g) => (
+        <span className="flex items-center gap-1.5">
+          <Pildora
+            className={
+              g.categoria === "INVERSION"
+                ? "bg-pc-info-soft text-pc-info"
+                : g.categoria === "PUBLICIDAD"
+                  ? "bg-pc-warn-soft text-pc-warn"
+                  : "bg-pc-surface-muted text-pc-text"
+            }
+          >
+            {NOMBRE_CATEGORIA[g.categoria] ?? g.categoria}
+          </Pildora>
+          {g.source && g.source !== "manual" && (
+            <Pildora className="border border-pc-border text-pc-text-muted">Automático</Pildora>
+          )}
+          {g.recurrence && <Pildora className="border border-pc-border text-pc-text-muted">{g.recurrence}</Pildora>}
+        </span>
+      ),
+      sortValue: (g) => NOMBRE_CATEGORIA[g.categoria] ?? g.categoria,
+    },
+    {
+      id: "descripcion",
+      header: "Descripción",
+      align: "left",
+      className: "max-w-[14rem] truncate",
+      cell: (g) => (
+        <span title={g.descripcion ?? undefined} className={cn(!g.descripcion && "text-pc-text-muted")}>
+          {g.descripcion || SIN_DATO}
+        </span>
+      ),
+      sortValue: (g) => g.descripcion ?? "",
+    },
+    {
+      id: "prenda",
+      header: "Prenda",
+      align: "left",
+      className: "max-w-[10rem] truncate",
+      cell: (g) => <span className={cn(!g.productName && "text-pc-text-muted")}>{g.productName || SIN_DATO}</span>,
+      sortValue: (g) => g.productName ?? "",
+    },
+    {
+      id: "monto",
+      header: "Monto",
+      cell: (g) => <span className="font-semibold">{formatSolesDecimales(Number(g.monto))}</span>,
+      sortValue: (g) => Number(g.monto),
+    },
+    {
+      id: "acciones",
+      header: <span className="sr-only">Acciones</span>,
+      cell: (g) => (
+        <span className="inline-flex gap-1">
+          <button
+            type="button"
+            aria-label={`Editar gasto ${NOMBRE_CATEGORIA[g.categoria] ?? g.categoria} ${formatSolesDecimales(Number(g.monto))}`}
+            className={claseBotonSecundario}
+            disabled={guardar.isPending || borrar.isPending}
+            onClick={() => setForm(formDeGasto(g))}
+          >
+            <Pencil className="h-3.5 w-3.5" aria-hidden />
+          </button>
+          <button
+            type="button"
+            aria-label={`Eliminar gasto ${NOMBRE_CATEGORIA[g.categoria] ?? g.categoria} ${formatSolesDecimales(Number(g.monto))}`}
+            className={cn(claseBotonSecundario, "hover:border-pc-bad hover:text-pc-bad")}
+            disabled={guardar.isPending || borrar.isPending}
+            onClick={() => setABorrar(g)}
+          >
+            <Trash2 className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        </span>
+      ),
+    },
+  ];
+
+  const etiquetaVista = etiquetaMes(vista.anio, vista.mes, true);
+
+  return (
+    <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[3fr_2fr]">
+      <PanelCard
+        titulo={`Gastos de ${etiquetaVista}`}
+        subtitulo="Monto mensual. Se reparte por días en los periodos más cortos"
+        acciones={
+          <>
+            <SelectorMes
+              anio={vista.anio}
+              mes={vista.mes}
+              anios={anios}
+              etiqueta="que se muestra"
+              onChange={(v) => setVista(v)}
+            />
+            {!form && (
+              <button
+                type="button"
+                className={claseBotonPrimario}
+                onClick={() => setForm(formVacio(vista.anio, vista.mes))}
               >
-                <SelectTrigger><SelectValue placeholder="Seleccioná una" /></SelectTrigger>
-                <SelectContent>{CATEGORIAS_FORM.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            {esInversion && (
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-muted-foreground font-medium">Prenda (opcional)</label>
-                <BuscadorPrenda
-                  value={form.productId ? { id: form.productId, name: form.productName || "Prenda" } : null}
-                  onChange={(p) => setForm((f) => ({ ...f, productId: p?.id ?? null, productName: p?.name ?? null }))}
-                />
-              </div>
+                <Plus className="h-3.5 w-3.5" aria-hidden />
+                Registrar gasto
+              </button>
             )}
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-muted-foreground font-medium">Descripción</label>
-              <Input placeholder="Ej: Planilla enero" value={form.descripcion} onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))} />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-muted-foreground font-medium">Monto (S/)</label>
-              <Input type="number" placeholder="0.00" min={0} step="0.01" value={form.monto} onChange={(e) => setForm((f) => ({ ...f, monto: Number(e.target.value) }))} />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-muted-foreground font-medium">Mes</label>
-              <Select value={String(form.mes)} onValueChange={(v) => setForm((f) => ({ ...f, mes: Number(v) }))}>
-                <SelectTrigger><SelectValue placeholder="Mes" /></SelectTrigger>
-                <SelectContent>{MESES.map((m, i) => <SelectItem key={i + 1} value={String(i + 1)}>{m}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-muted-foreground font-medium opacity-0 select-none">Acción</label>
-              <div className="flex gap-2">
-                <Button onClick={handleSubmit} className="flex-1">{editId ? "Guardar" : "Registrar"}</Button>
-                <Button variant="outline" onClick={() => { setShowForm(false); setEditId(null); setForm(emptyForm); }}>Cancelar</Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          {form && (
+            <form
+              aria-label={form.id ? "Editar gasto" : "Registrar gasto"}
+              className="space-y-3 rounded-xl border border-pc-border-soft bg-pc-surface-muted p-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (puedeGuardar) guardar.mutate(form);
+              }}
+            >
+              <p className="text-sm font-semibold text-pc-text">{form.id ? "Editar gasto" : "Registrar gasto"}</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <label htmlFor={ids.categoria} className={claseEtiqueta}>
+                    Categoría
+                  </label>
+                  <select
+                    id={ids.categoria}
+                    value={form.categoria}
+                    onChange={(event) => setForm({ ...form, categoria: event.target.value as CategoriaGasto })}
+                    className={cn(claseInput, "w-full")}
+                  >
+                    {CATEGORIAS_FORM.map((c) => (
+                      <option key={c} value={c}>
+                        {NOMBRE_CATEGORIA[c]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {form.categoria === "INVERSION" && (
+                  <BuscadorPrenda
+                    value={form.productId ? { id: form.productId, name: form.productName || "Prenda" } : null}
+                    onChange={(p) => setForm({ ...form, productId: p?.id ?? null, productName: p?.name ?? null })}
+                  />
+                )}
+                <div className="flex min-w-0 flex-col gap-1">
+                  <label htmlFor={ids.descripcion} className={claseEtiqueta}>
+                    Descripción
+                  </label>
+                  <input
+                    id={ids.descripcion}
+                    placeholder="Ej.: planilla de noviembre"
+                    value={form.descripcion}
+                    onChange={(event) => setForm({ ...form, descripcion: event.target.value })}
+                    className={cn(claseInput, "w-full")}
+                  />
+                </div>
+                <div className="flex min-w-0 flex-col gap-1">
+                  <label htmlFor={ids.monto} className={claseEtiqueta}>
+                    Monto del mes (S/)
+                  </label>
+                  <input
+                    id={ids.monto}
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    value={form.monto}
+                    onChange={(event) => setForm({ ...form, monto: event.target.value })}
+                    aria-invalid={!!errorDeMonto}
+                    aria-describedby={errorDeMonto ? `${ids.monto}-error` : undefined}
+                    className={cn(claseInput, "w-full text-right tabular-nums aria-invalid:border-pc-bad")}
+                  />
+                  {errorDeMonto && (
+                    <span id={`${ids.monto}-error`} className="text-[11px] text-pc-bad">
+                      {errorDeMonto}
+                    </span>
+                  )}
+                </div>
+                <div className="flex min-w-0 flex-col gap-1">
+                  <span className={claseEtiqueta}>Mes del gasto</span>
+                  <SelectorMes
+                    anio={form.anio}
+                    mes={form.mes}
+                    anios={anios}
+                    etiqueta="del gasto"
+                    onChange={(v) => setForm({ ...form, ...v })}
+                  />
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-sm">Gastos — {fromDate} al {toDate}</CardTitle>
-          {!showForm && <Button size="sm" onClick={() => setShowForm(true)}><Plus className="h-4 w-4 mr-1" /> Registrar gasto</Button>}
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Categoría</TableHead>
-                  <TableHead>Descripción</TableHead>
-                  <TableHead>Prenda</TableHead>
-                  <TableHead className="text-right">Monto</TableHead>
-                  <TableHead className="w-24" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {gastos.length === 0 ? (
-                  <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">No hay gastos registrados para este período</TableCell></TableRow>
-                ) : gastos.map((g) => (
-                  <TableRow key={g.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-1.5">
-                        <Badge variant="outline">{CATEGORIAS_FORM.find((c) => c.value === g.categoria)?.label ?? g.categoria}</Badge>
-                        {g.source && g.source !== "manual" && (
-                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Auto</Badge>
-                        )}
-                        {g.recurrence && (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">{g.recurrence}</Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">{g.descripcion || "—"}</TableCell>
-                    <TableCell className="text-sm">{g.productName || <span className="text-muted-foreground">—</span>}</TableCell>
-                    <TableCell className="text-right font-mono font-semibold">{fmt(Number(g.monto))}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-1 justify-end">
-                        <Button variant="ghost" size="icon" onClick={() => handleEdit(g)}><Pencil className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => handleDelete(g.id)}><Trash2 className="h-4 w-4" /></Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+              {form.categoria === "INVERSION" && (
+                <p className="text-[11px] text-pc-text-muted">
+                  La compra de mercadería se guarda para tu control pero no se resta en el resultado: el costo del producto
+                  ya se cuenta cuando se vende.
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <button type="submit" className={claseBotonPrimario} disabled={!puedeGuardar}>
+                  {guardar.isPending ? "Guardando…" : form.id ? "Guardar cambios" : "Registrar"}
+                </button>
+                <button type="button" className={claseBotonSecundario} onClick={() => setForm(null)}>
+                  Cancelar
+                </button>
+              </div>
+            </form>
           )}
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-sm font-semibold">Inversión por prenda</CardTitle>
-          <span className="text-sm font-mono font-semibold">{fmt(totalInversion)}</span>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <p className="text-xs text-muted-foreground">
-            Compra de mercadería del período. No suma a gastos operativos ni a la utilidad: el costo de la prenda ya entra al COGS cuando se vende.
-          </p>
-          {inversionPorPrenda.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">No hay inversión registrada para este período</p>
+          {gastosQ.isLoading ? (
+            <PanelSkeleton variant="tabla" label={`gastos de ${etiquetaVista}`} />
+          ) : gastosQ.isError ? (
+            <PanelError error={comoError(gastosQ.error)} onRetry={() => void gastosQ.refetch()} />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Prenda</TableHead>
-                  <TableHead className="text-right">Registros</TableHead>
-                  <TableHead className="text-right">Total invertido</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {inversionPorPrenda.map((r) => (
-                  <TableRow key={r.key}>
-                    <TableCell className={r.key === "sin-prenda" ? "text-muted-foreground" : ""}>{r.prenda}</TableCell>
-                    <TableCell className="text-right font-mono">{r.registros}</TableCell>
-                    <TableCell className="text-right font-mono font-semibold">{fmt(r.total)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <AdminTable
+              caption={`Gastos de ${etiquetaVista}`}
+              columns={columnas}
+              rows={gastos}
+              getRowKey={(g) => g.id}
+              emptyMessage={`No hay gastos cargados en ${etiquetaVista}`}
+              footer={{
+                categoria: hayInversion ? "Total (con compra de mercadería)" : "Total del mes",
+                monto: formatSolesDecimales(totalMes),
+              }}
+            />
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </PanelCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-semibold">Fijos vs Variables</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex h-4 w-full overflow-hidden rounded-full bg-muted">
-            <div className="bg-primary transition-all" style={{ width: `${pctFijos}%` }} />
-            <div className="bg-amber-500 transition-all" style={{ width: `${pctVariables}%` }} />
-          </div>
+      <PanelCard titulo={`Por categoría · ${etiquetaVista}`} subtitulo="Gasto del mes y la parte que le toca al periodo elegido">
+        {gastosQ.isLoading ? (
+          <PanelSkeleton variant="tabla" label="gastos por categoría" />
+        ) : gastosQ.isError ? (
+          <PanelError error={comoError(gastosQ.error)} />
+        ) : (
+          <ResumenDelMes gastos={gastos} anio={vista.anio} mes={vista.mes} desde={desde} hasta={hasta} />
+        )}
+      </PanelCard>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full bg-primary shrink-0" />
-                <span className="text-sm font-medium">Fijos</span>
-                <span className="ml-auto text-xs text-muted-foreground font-mono">{pctFijos.toFixed(1)}%</span>
-              </div>
-              <p className="text-xl font-bold font-mono pl-5">{fmt(totalFijos)}</p>
-              <div className="pl-5 space-y-1">
-                {totalesPorCategoria
-                  .filter((c) => c.value === "PLANILLA" || c.value === "HERRAMIENTAS")
-                  .map((c) => (
-                    <div key={c.value} className="flex justify-between text-xs text-muted-foreground">
-                      <span>{c.label}</span>
-                      <span className="font-mono">{fmt(c.total)}</span>
-                    </div>
-                  ))}
-              </div>
-            </div>
+      <AlertDialog open={!!aBorrar} onOpenChange={(abierto) => !abierto && setABorrar(null)}>
+        <AlertDialogContent className="border-pc-border bg-pc-card text-pc-text">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-base">¿Eliminar este gasto?</AlertDialogTitle>
+            <AlertDialogDescription className="text-pc-text-muted">
+              {aBorrar
+                ? `${NOMBRE_CATEGORIA[aBorrar.categoria] ?? aBorrar.categoria}${aBorrar.descripcion ? ` · ${aBorrar.descripcion}` : ""} · ${etiquetaMes(Number(aBorrar.anio), Number(aBorrar.mes), true)} · ${formatSolesDecimales(Number(aBorrar.monto))}. `
+                : ""}
+              Deja de restarse en Resumen, Utilidad y los demás resultados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className={claseBotonSecundario}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-pc-bad text-pc-on-fill hover:bg-pc-bad/90"
+              onClick={() => aBorrar && borrar.mutate(aBorrar.id)}
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
 
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full bg-amber-500 shrink-0" />
-                <span className="text-sm font-medium">Variables</span>
-                <span className="ml-auto text-xs text-muted-foreground font-mono">{pctVariables.toFixed(1)}%</span>
-              </div>
-              <p className="text-xl font-bold font-mono pl-5">{fmt(totalVariables)}</p>
-              <div className="pl-5 space-y-1">
-                {totalesPorCategoria
-                  .filter((c) => c.value === "PUBLICIDAD" || c.value === "COURIER_PROPIO" || c.value === "OTRO")
-                  .map((c) => (
-                    <div key={c.value} className="flex justify-between text-xs text-muted-foreground">
-                      <span>{c.label}</span>
-                      <span className="font-mono">{fmt(c.total)}</span>
-                    </div>
-                  ))}
-              </div>
-            </div>
-          </div>
+// ---- Costos y gastos del periodo ------------------------------------------------------------
 
-          <div className="flex justify-between border-t pt-3 text-sm font-semibold">
-            <span>Total gastos</span>
-            <span className="font-mono">{fmt(totalGeneral)}</span>
-          </div>
-        </CardContent>
-      </Card>
+function CostosDelPeriodo({ datos }: { datos: DatosPeriodo }) {
+  if (datos.cargando || datos.error) return null;
+  const r = datos.resultados;
+  const total = r.ventas - r.utilidadOperativa;
+  const nota = notaFlete(datos.flete);
+  const lineas: LineaCascada[] = [
+    {
+      clave: "costo",
+      etiqueta: "Costo de producto",
+      monto: r.costoProducto,
+      signo: "+",
+      nota:
+        r.costo.sinCostoPedidos > 0
+          ? `Falta el costo de ${r.costo.sinCostoPedidos} ${r.costo.sinCostoPedidos === 1 ? "venta" : "ventas"}`
+          : undefined,
+    },
+    { clave: "merma", etiqueta: "Merma", monto: r.merma, signo: "+" },
+    { clave: "comisiones", etiqueta: "Comisiones de canal", monto: r.comisiones, signo: "+" },
+    {
+      clave: "envios",
+      etiqueta: "Envíos (flete por pedido)",
+      monto: r.envios,
+      signo: "+",
+      nota: nota?.texto,
+      notaTono: nota?.baja ? "aviso" : "info",
+    },
+    { clave: "publicidad", etiqueta: "Publicidad", monto: r.publicidad.total, signo: "+" },
+    { clave: "fijos", etiqueta: "Gastos fijos (repartidos por días)", monto: r.gastosFijos, signo: "+" },
+    { clave: "total", etiqueta: "Total de costos y gastos", monto: total, signo: "=", total: true },
+    { clave: "ventas", etiqueta: "Ventas del periodo (con IGV)", monto: r.ventas, signo: "=", informativa: true },
+  ];
+  return (
+    <PanelCard
+      titulo="Costos y gastos del periodo"
+      subtitulo="Todo lo que se resta a las ventas hasta la utilidad operativa (los mismos números del Resumen)"
+    >
+      <TablaCascada lineas={lineas} base={r.ventas} caption="Costos y gastos del periodo" />
+    </PanelCard>
+  );
+}
+
+export default function GastosPage() {
+  const { fromDate, toDate } = useAdminPeriod();
+  const datos = useResultadosPeriodo(fromDate, toDate);
+  return (
+    <div className="space-y-3.5">
+      <ResumenPeriodo datos={datos} />
+      {/* La clave reinicia el mes elegido cuando cambia el periodo: arranca en el mes del periodo. */}
+      <GastosDelMes key={toDate} desde={fromDate} hasta={toDate} />
+      <CostosDelPeriodo datos={datos} />
     </div>
   );
 }

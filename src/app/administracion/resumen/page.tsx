@@ -1,814 +1,534 @@
 "use client";
 
-import { AdvertisingCompanySpend } from "@/components/advertising/AdvertisingCompanySpend";
-
 /**
- * Resumen — §7 doc técnica.
+ * Resultados › Resumen (FEAT-34).
  *
- * CONECTADO A DATOS REALES: toda la cascada de utilidad (ventas, COGS,
- * merma, fees marketplace, courier integrado, gastos operativos, comisión
- * POWIP, IGV) sale de `useAdminOrders` / `useAdminGastos` /
- * `useAdminShrinkageSummary` / `useAdminCourierCost` — igual que antes.
+ * Estado de resultados del periodo con la cuenta única de `_lib/resultados.ts` (la misma de Utilidad, Punto de
+ * equilibrio, Reporte, Flujo y Anual) y comparado contra el mismo tramo del mes anterior (`periodoAnterior`).
  *
- * SOLUCIÓN PUENTE (localStorage, sin backend): Inversión ADS, CPV neto y
- * ROAS POWIP del hero y del semáforo COD salen de la inversión registrada en
- * Pauta por canal (`usePautaEntries`), filtrada al periodo del topbar — y la
- * meta mensual de la alerta de avance sale de la meta anual (÷12) que se
- * edita en Resumen Anual (`useMetasAnuales`). Ambas viven en `localStorage`
- * del navegador — no hay backend detrás todavía, ver aviso en la UI.
- *
- * QUITADO — Tasa de confirmación (uno de los 4 indicadores del semáforo COD
- * del doc, §7.7): `OrderStatus` no distingue "confirmado" de otros estados
- * y no hay forma de resolverlo sin un cambio de backend, así que el
- * semáforo se quedó en 3 indicadores (CPV, ROAS, margen neto) en vez de
- * mostrar una card que siempre va a decir "Sin dato". Vuelve a agregarse
- * cuando exista ese estado en `OrderStatus`.
+ * - Sin «IGV/IR estimado» ni comisión Powip (D3, D4): las ventas se muestran con IGV y, como dato informativo, sin IGV.
+ * - Publicidad de una sola fuente (D2): consumo conectado + Gastos › Publicidad. La inversión manual del navegador
+ *   ya no entra.
+ * - Gastos mensuales repartidos por días del periodo (D8).
+ * - Metas sin valores por defecto (D5): sin meta se dice «Sin meta».
+ * - Las ventas llegan calculadas de ms-ventas y se cuentan el día en que se ENTREGARON (D1).
+ * - Envíos = flete por pedido (D9), con la nota de en cuántas entregas se conoce.
+ * - Adelantos: lo cobrado de pedidos creados en el periodo que todavía no son venta (sin entregados, anulados,
+ *   incompletos ni leads); lo calcula ms-ventas (`enCurso`).
  */
 
-import { useMemo, useState } from "react";
-import { useAuth } from "@/contexts/AuthContext";
+import Link from "next/link";
+import type { ReactNode } from "react";
+import { ProgressBar } from "@/components/panel-control/charts/ProgressBar";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
+import { calcularDelta } from "@/features/panel-control/shared/utils/delta";
+import { type Nivel, NivelPill } from "../_components/nivel";
 import {
-  useAdminOrders,
-  useAdminGastos,
-  useAdminShrinkageSummary,
-  useAdminCourierCost,
-} from "@/hooks/useAdminQueries";
-import { updateCompany as updateCompanyApi } from "@/services/companyService";
-import { IGastoOperativo } from "@/interfaces/IAdmin";
-import { calcularPnL } from "../_lib/pnl";
-import { usePautaEntries, totalInvertidoEnRango } from "../_lib/pautaStorage";
-import { useMetasAnuales } from "../_lib/metasStorage";
-import { paidAmount } from "../_lib/realData";
-import { NivelDot, NivelPill, type Nivel } from "../_components/nivel";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+  Aviso,
+  AvisoCostos,
+  Dato,
+  formatNumber,
+  formatPercent,
+  formatSoles,
+  formatVeces,
+  KpiCard,
+  type LineaCascada,
+  NotaSinHistorial,
+  PanelCard,
+  PanelError,
+  PanelSkeleton,
+  TablaCascada,
+} from "../_components/ui";
+import { metaVentasMensual, useMetasAnuales } from "../_lib/metasStorage";
 import {
-  TrendingUp,
-  TrendingDown,
-  Minus,
-  Pencil,
-  Check,
-  X,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+  type DiaKey,
+  etiquetaPeriodo,
+  inicioDeMes,
+  MESES_LARGOS,
+  mesesDelPeriodo,
+  partes,
+} from "../_lib/periodo";
+import type { PublicidadConectada } from "../_lib/publicidad";
+import type { Resultados } from "../_lib/resultados";
+import { type CoberturaFlete, notaFlete } from "../_lib/servidor";
+import { useAdminContexto, useResultadosComparados } from "../_lib/useResultados";
 
-function shiftPeriod(fromDate: string, toDate: string) {
-  const from = new Date(fromDate);
-  const to = new Date(toDate);
-  const diffDays = Math.round((to.getTime() - from.getTime()) / 86400000) + 1;
-  const prevTo = new Date(from);
-  prevTo.setDate(prevTo.getDate() - 1);
-  const prevFrom = new Date(prevTo);
-  prevFrom.setDate(prevFrom.getDate() - diffDays + 1);
-  return {
-    prevFrom: prevFrom.toISOString().slice(0, 10),
-    prevTo: prevTo.toISOString().slice(0, 10),
-  };
+// ---- Cálculos de la pantalla ------------------------------------------------------------------
+
+const plural = (n: number, uno: string, varios: string) =>
+  `${formatNumber(n)} ${n === 1 ? uno : varios}`;
+
+function notaPublicidad(r: Resultados, p: PublicidadConectada): string {
+  const gastos = `Gastos › Publicidad ${formatSoles(r.publicidad.gastos)}`;
+  switch (p.estado) {
+    case "ok": {
+      const partesNota = [`Conectada ${formatSoles(r.publicidad.conectada)} + ${gastos}`];
+      if (p.provisional) partesNota.push("incluye hoy, que la plataforma todavía puede corregir");
+      if (p.diasFaltantes > 0 || p.cobertura === "partial")
+        partesNota.push("faltan días por importar");
+      if (p.otrasMonedas.length > 0)
+        partesNota.push(`sin contar el gasto en ${p.otrasMonedas.join(", ")}`);
+      return partesNota.join(" · ");
+    }
+    case "sin_cuentas":
+      return `Sin cuentas de publicidad conectadas: solo ${gastos}`;
+    case "cargando":
+      return `Cargando las cuentas conectadas… por ahora solo ${gastos}`;
+    case "sin_permiso":
+      return `No tienes permiso para ver las cuentas conectadas: solo ${gastos}`;
+    default:
+      return `No se pudo leer el consumo de las cuentas conectadas: solo ${gastos}`;
+  }
 }
 
-function pctChange(current: number, prev: number): number | null {
-  if (prev === 0) return null;
-  return ((current - prev) / Math.abs(prev)) * 100;
+function lineasCascada(
+  r: Resultados,
+  publicidad: PublicidadConectada,
+  igvPct: number,
+  flete: CoberturaFlete,
+): LineaCascada[] {
+  const nota = notaFlete(flete);
+  return [
+    { clave: "ventas", etiqueta: "Ventas (con IGV)", monto: r.ventas, signo: "+" },
+    {
+      clave: "igv",
+      etiqueta: `IGV incluido (${igvPct}%)`,
+      monto: r.igvIncluido,
+      signo: "=",
+      informativa: true,
+    },
+    {
+      clave: "sin_igv",
+      etiqueta: "Ventas sin IGV",
+      monto: r.ventasSinIgv,
+      signo: "=",
+      informativa: true,
+    },
+    {
+      clave: "costo",
+      etiqueta: "Costo de producto",
+      monto: r.costoProducto,
+      signo: "−",
+      nota:
+        r.costo.sinCostoPedidos > 0
+          ? `${plural(r.costo.sinCostoPedidos, "venta", "ventas")} sin costo cargado: el costo real es mayor`
+          : undefined,
+    },
+    { clave: "merma", etiqueta: "Merma", monto: r.merma, signo: "−" },
+    { clave: "bruta", etiqueta: "Utilidad bruta", monto: r.utilidadBruta, signo: "=", total: true },
+    { clave: "comisiones", etiqueta: "Comisiones de canal", monto: r.comisiones, signo: "−" },
+    {
+      clave: "envios",
+      etiqueta: "Envíos (flete por pedido)",
+      monto: r.envios,
+      signo: "−",
+      nota: nota?.texto,
+      notaTono: nota?.baja ? "aviso" : "info",
+    },
+    {
+      clave: "publicidad",
+      etiqueta: "Publicidad",
+      monto: r.publicidad.total,
+      signo: "−",
+      nota: notaPublicidad(r, publicidad),
+      notaTono:
+        publicidad.estado === "ok" && !publicidad.provisional && publicidad.diasFaltantes === 0 ? "info" : "aviso",
+    },
+    {
+      clave: "contribucion",
+      etiqueta: "Contribución",
+      monto: r.contribucion,
+      signo: "=",
+      total: true,
+    },
+    {
+      clave: "fijos",
+      etiqueta: "Gastos fijos",
+      monto: r.gastosFijos,
+      signo: "−",
+      nota:
+        r.gastosFijos > 0
+          ? "Gasto mensual × días del periodo ÷ días del mes"
+          : "Sin gastos fijos cargados: cárgalos en Costos › Gastos y costos",
+      notaTono: r.gastosFijos > 0 ? "info" : "aviso",
+    },
+    {
+      clave: "operativa",
+      etiqueta: "Utilidad operativa",
+      monto: r.utilidadOperativa,
+      signo: "=",
+      total: true,
+    },
+  ];
 }
 
-function fmt(n: number) {
-  // n === 0 también atrapa -0 (en JS, -0 === 0 es true) — evita mostrar "S/ -0.00".
-  const v = n === 0 ? 0 : n;
-  return `S/ ${v.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// ---- Semáforo COD -----------------------------------------------------------------------------
+
+interface Indicador {
+  id: string;
+  nombre: string;
+  valor: string;
+  nivel: Nivel;
+  umbral: string;
+  ayuda: string;
 }
 
-function fmt0(n: number) {
-  return `S/ ${n.toLocaleString("es-PE", { maximumFractionDigits: 0 })}`;
+const ETIQUETA_NIVEL: Record<Nivel, string> = {
+  verde: "Bien",
+  ambar: "Atención",
+  rojo: "Alerta",
+  azul: "Info",
+  "sin-datos": "Sin datos",
+};
+
+/** Umbrales de siempre de la pantalla (doc técnica §7.7). */
+function nivelCostoPorVenta(valor: number | null): Nivel {
+  if (valor === null) return "sin-datos";
+  return valor < 18 ? "verde" : valor <= 22 ? "ambar" : "rojo";
 }
 
-function DeltaBadge({
-  current,
-  prev,
-}: {
-  current: number;
-  prev: number | null;
-}) {
-  if (prev === null) return null;
-  const delta = pctChange(current, prev);
-  if (delta === null) return null;
-  const abs = Math.abs(delta).toFixed(1);
-  if (delta > 0)
-    return (
-      <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-green-600">
-        <TrendingUp className="h-3 w-3" />+{abs}%
-      </span>
-    );
-  if (delta < 0)
-    return (
-      <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-destructive">
-        <TrendingDown className="h-3 w-3" />-{abs}%
-      </span>
-    );
-  return (
-    <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground">
-      <Minus className="h-3 w-3" />
-      0%
-    </span>
-  );
+function nivelRetorno(valor: number | null): Nivel {
+  if (valor === null) return "sin-datos";
+  return valor > 4 ? "verde" : valor >= 3 ? "ambar" : "rojo";
 }
 
-/** Peor de varios niveles — ignora "sin-datos" (§7.7: el color final es el peor de los indicadores CON dato). */
-function peorNivel(niveles: (Nivel | null)[]): Nivel {
-  const validos = niveles.filter(
-    (n): n is Nivel => n !== null && n !== "sin-datos",
-  );
-  if (validos.length === 0) return "sin-datos";
-  if (validos.includes("rojo")) return "rojo";
-  if (validos.includes("ambar")) return "ambar";
+function nivelMargen(valor: number | null): Nivel {
+  if (valor === null) return "sin-datos";
+  return valor > 0.28 ? "verde" : valor >= 0.2 ? "ambar" : "rojo";
+}
+
+function indicadoresCod(r: Resultados): Indicador[] {
+  const sinPublicidad = r.publicidad.total <= 0;
+  return [
+    {
+      id: "costo_venta",
+      nombre: "Costo de publicidad por venta",
+      valor: formatSoles(r.costoPublicidadPorVenta),
+      nivel: nivelCostoPorVenta(r.costoPublicidadPorVenta),
+      umbral: "Verde < S/ 18 · ámbar S/ 18–22 · rojo > S/ 22",
+      ayuda: sinPublicidad
+        ? "Sin publicidad registrada en el periodo"
+        : r.pedidos === 0
+          ? "Sin ventas en el periodo"
+          : "Publicidad ÷ pedidos entregados",
+    },
+    {
+      id: "retorno",
+      nombre: "Retorno de publicidad",
+      valor: formatVeces(r.retornoPublicidad),
+      nivel: nivelRetorno(r.retornoPublicidad),
+      umbral: "Verde > 4x · ámbar 3–4x · rojo < 3x",
+      ayuda: sinPublicidad ? "Sin publicidad registrada en el periodo" : "Ventas ÷ publicidad",
+    },
+    {
+      id: "margen",
+      nombre: "Margen operativo",
+      valor: formatPercent(r.margenOperativo, 1),
+      nivel: nivelMargen(r.margenOperativo),
+      umbral: "Verde > 28% · ámbar 20–28% · rojo < 20%",
+      ayuda:
+        r.margenOperativo === null ? "Sin ventas en el periodo" : "Utilidad operativa ÷ ventas",
+    },
+  ];
+}
+
+/** El peor de los indicadores con dato. */
+function peorNivel(niveles: Nivel[]): Nivel {
+  const conDato = niveles.filter((n) => n !== "sin-datos");
+  if (conDato.length === 0) return "sin-datos";
+  if (conDato.includes("rojo")) return "rojo";
+  if (conDato.includes("ambar")) return "ambar";
   return "verde";
 }
 
-export default function ResumenAdminPage() {
-  const { auth, updateCompany } = useAuth();
-  const { fromDate, toDate } = useAdminPeriod();
-  const [editingRate, setEditingRate] = useState(false);
-  const [rateInput, setRateInput] = useState("");
-  const [savingRate, setSavingRate] = useState(false);
+// ---- Metas ------------------------------------------------------------------------------------
 
-  const companyId = auth?.company?.id ?? "";
-  const token = auth?.accessToken ?? "";
-  const storeIds = useMemo(
-    () => (auth?.company?.stores ?? []).map((s) => s.id),
-    [auth?.company?.stores],
-  );
-  const ivaRate = (auth?.company?.iva ?? 18) / 100;
-  const powipRate = auth?.company?.powipCommissionRate ?? 0.005;
-  const { prevFrom, prevTo } = useMemo(
-    () => shiftPeriod(fromDate, toDate),
-    [fromDate, toDate],
-  );
-
-  const [pautaEntries] = usePautaEntries(companyId);
-  // Parseo por partes (no `new Date(fromDate)`) para evitar corrimientos de
-  // huso horario — con `new Date("yyyy-01-01").getFullYear()` un usuario en
-  // UTC-5 (Perú) recibía el año anterior.
-  const anioPeriodo = Number(fromDate.split("-")[0]);
-  const [metas] = useMetasAnuales(companyId, anioPeriodo);
-
-  // Período actual
-  const { data: orders = [], isLoading: l1 } = useAdminOrders(
-    companyId,
-    fromDate,
-    toDate,
-  );
-  const { data: gastos = [], isLoading: l2 } = useAdminGastos(
-    companyId,
-    fromDate,
-    toDate,
-    token,
-  );
-  const { data: merma, isLoading: l3 } = useAdminShrinkageSummary(
-    companyId,
-    fromDate,
-    toDate,
-    token,
-  );
-  const { data: courierCost = 0, isLoading: l4 } = useAdminCourierCost(
-    storeIds,
-    fromDate,
-    toDate,
-    token,
-  );
-
-  // Período anterior
-  const { data: ordersPrev = [], isLoading: l5 } = useAdminOrders(
-    companyId,
-    prevFrom,
-    prevTo,
-  );
-  const { data: gastosPrev = [], isLoading: l6 } = useAdminGastos(
-    companyId,
-    prevFrom,
-    prevTo,
-    token,
-  );
-  const { data: mermaPrev, isLoading: l7 } = useAdminShrinkageSummary(
-    companyId,
-    prevFrom,
-    prevTo,
-    token,
-  );
-  const { data: courierCostPrev = 0, isLoading: l8 } = useAdminCourierCost(
-    storeIds,
-    prevFrom,
-    prevTo,
-    token,
-  );
-
-  const loading = l1 || l2 || l3 || l4 || l5 || l6 || l7 || l8;
-
-  const pnl = useMemo(() => {
-    if (!merma) return null;
-    return calcularPnL(
-      orders as any[],
-      gastos as IGastoOperativo[],
-      merma,
-      ivaRate,
-      courierCost as number,
-      powipRate,
-    );
-  }, [orders, gastos, merma, courierCost, ivaRate, powipRate]);
-
-  const pnlPrev = useMemo(() => {
-    if (!mermaPrev) return null;
-    return calcularPnL(
-      ordersPrev as any[],
-      gastosPrev as IGastoOperativo[],
-      mermaPrev,
-      ivaRate,
-      courierCostPrev as number,
-      powipRate,
-    );
-  }, [ordersPrev, gastosPrev, mermaPrev, courierCostPrev, ivaRate, powipRate]);
-
-  // ── Datos derivados para hero + semáforo COD + "resumen del mes" (§7, §7.7) ──
-  const derivados = useMemo(() => {
-    const todas = orders as any[];
-    const entregadas = todas.filter((o) => o.status === "ENTREGADO");
-    const unidadesEntregadas = entregadas.reduce(
-      (s, o) =>
-        s + (o.itemCount || (Array.isArray(o.items) ? o.items.length : 1)),
-      0,
-    );
-    const inversionAds = totalInvertidoEnRango(pautaEntries, fromDate, toDate);
-    const cpvNeto =
-      unidadesEntregadas > 0 && inversionAds > 0
-        ? inversionAds / unidadesEntregadas
-        : null;
-    const roasPowip =
-      inversionAds > 0 ? (pnl?.ventasBrutas ?? 0) / inversionAds : null;
-    const adelantosEnCaja = todas
-      .filter((o) => o.status !== "ENTREGADO" && o.status !== "ANULADO")
-      .reduce((s, o) => s + paidAmount(o), 0);
-
-    const precioProm =
-      unidadesEntregadas > 0
-        ? entregadas.reduce((s, o) => s + Number(o.grandTotal || 0), 0) /
-          unidadesEntregadas
-        : 0;
-    // Mismo criterio que la pestaña Punto de Equilibrio (`equilibrio/page.tsx`):
-    // costos fijos = TODOS los gastos operativos (`pnl.totalGastosOperativos`,
-    // incluye fees marketplace y courier integrado, no solo `gastos`
-    // manuales) y costo variable = COGS + merma. Antes esta card recalculaba
-    // su propia versión incompleta y mostraba un punto de equilibrio más
-    // optimista (y distinto) que el de la pestaña dedicada.
-    const costoVarUnit =
-      unidadesEntregadas > 0 && pnl
-        ? (pnl.cogs + pnl.mermaCosto) / unidadesEntregadas
-        : 0;
-    const margenContribucion = precioProm - costoVarUnit;
-    const costosFijos = pnl?.totalGastosOperativos ?? 0;
-    const puntoEquilibrioUds =
-      margenContribucion > 0 ? Math.ceil(costosFijos / margenContribucion) : 0;
-
+/**
+ * Parte de la meta mensual que le toca al periodo. Un periodo que arranca el día 1 y no sale del mes se mide contra
+ * el mes entero («Avance de noviembre»); cualquier otro rango, contra la meta repartida por días.
+ */
+function tramoDeMeta(
+  desde: DiaKey,
+  hasta: DiaKey,
+): { factor: number; titulo: string; explicacion: string } {
+  const tramos = mesesDelPeriodo(desde, hasta);
+  if (tramos.length === 1 && desde === inicioDeMes(desde)) {
     return {
-      pedidosEntregados: entregadas.length,
-      pedidosTotales: todas.length,
-      unidadesEntregadas,
-      inversionAds,
-      cpvNeto,
-      roasPowip,
-      adelantosEnCaja,
-      puntoEquilibrioUds,
+      factor: 1,
+      titulo: `Avance de ${MESES_LARGOS[partes(desde)[1] - 1]}`,
+      explicacion: "Meta del mes = meta anual ÷ 12",
     };
-  }, [orders, pautaEntries, fromDate, toDate, pnl]);
-
-  const metaVentasMes = metas.ventasAnual / 12;
-  const metaProfitMes = metas.profitAnual / 12;
-
-  const semaforoCod = useMemo(() => {
-    if (!pnl) return [];
-    const nivelCpv: Nivel =
-      derivados.cpvNeto == null
-        ? "sin-datos"
-        : derivados.cpvNeto < 18
-          ? "verde"
-          : derivados.cpvNeto <= 22
-            ? "ambar"
-            : "rojo";
-    const nivelRoas: Nivel =
-      derivados.roasPowip == null
-        ? "sin-datos"
-        : derivados.roasPowip > 4
-          ? "verde"
-          : derivados.roasPowip >= 3
-            ? "ambar"
-            : "rojo";
-    const nivelMargen: Nivel =
-      pnl.margenNeto > 28 ? "verde" : pnl.margenNeto >= 20 ? "ambar" : "rojo";
-    return [
-      {
-        nombre: "CPV neto total",
-        valor:
-          derivados.cpvNeto != null ? fmt0(derivados.cpvNeto) : "Sin inversión",
-        umbral: "< S/18 · 18–22 · > 22",
-        nivel: nivelCpv,
-      },
-      {
-        nombre: "Ventas / inversión manual",
-        valor:
-          derivados.roasPowip != null
-            ? `${derivados.roasPowip.toFixed(1)}×`
-            : "Sin inversión",
-        umbral: "> 4.0× · 3–4× · < 3×",
-        nivel: nivelRoas,
-      },
-      {
-        nombre: "Margen neto",
-        valor: `${pnl.margenNeto.toFixed(1)}%`,
-        umbral: "> 28% · 20–28% · < 20%",
-        nivel: nivelMargen,
-      },
-    ];
-  }, [pnl, derivados]);
-
-  const semaforoFinal = peorNivel(semaforoCod.map((s) => s.nivel));
-  const indicadoresEnAlerta = semaforoCod.filter(
-    (s) => s.nivel === "ambar" || s.nivel === "rojo",
-  ).length;
-
-  const handleSaveRate = async () => {
-    if (!companyId || !token) return;
-    const pct = parseFloat(rateInput);
-    if (isNaN(pct) || pct < 0 || pct > 100) return;
-    setSavingRate(true);
-    try {
-      await updateCompanyApi(companyId, token, {
-        powipCommissionRate: pct / 100,
-      });
-      if (auth?.company?.id)
-        updateCompany({
-          ...auth.company,
-          id: auth.company.id,
-          powipCommissionRate: pct / 100,
-        });
-      setEditingRate(false);
-    } catch {
-      // fallo silencioso — el valor anterior se mantiene
-    } finally {
-      setSavingRate(false);
-    }
+  }
+  return {
+    factor: tramos.reduce((s, t) => s + t.dias / t.diasMes, 0),
+    titulo: "Avance contra la meta",
+    explicacion: "Meta del periodo = meta mensual × días del periodo ÷ días del mes",
   };
+}
 
-  if (loading) {
+function FilaAvance({
+  etiqueta,
+  logrado,
+  meta,
+}: {
+  etiqueta: string;
+  logrado: number;
+  meta: number;
+}) {
+  const avance = meta > 0 ? logrado / meta : null;
+  const falta = meta - logrado;
+  return (
+    <div>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-xs">
+        <span className="font-semibold text-pc-text">{etiqueta}</span>
+        <span className="tabular-nums text-pc-text-muted">
+          {formatSoles(logrado)} de {formatSoles(meta)} ({formatPercent(avance)})
+        </span>
+      </div>
+      <ProgressBar logrado={logrado} meta={meta} etiqueta={`${etiqueta} sobre la meta`} />
+      <p className="mt-1 text-[11px] text-pc-text-muted">
+        {falta > 0 ? `Faltan ${formatSoles(falta)}` : "Meta cumplida"}
+      </p>
+    </div>
+  );
+}
+
+// ---- Página -----------------------------------------------------------------------------------
+
+function Nota({ children }: { children: ReactNode }) {
+  return <p className="text-[11px] leading-relaxed text-pc-text-muted">{children}</p>;
+}
+
+export default function ResumenAdminPage() {
+  const { fromDate, toDate } = useAdminPeriod();
+  const { companyId, igvPct } = useAdminContexto();
+  const { actual, anterior, rangoAnterior } = useResultadosComparados(fromDate, toDate);
+  const [metas] = useMetasAnuales(companyId, partes(fromDate)[0]);
+
+  const { adelantos, pedidos: pedidosEnCurso } = actual.servidor.enCurso;
+
+  if (actual.error) {
+    return <PanelError error={actual.error instanceof Error ? actual.error : null} />;
+  }
+  if (actual.cargando) {
     return (
-      <div className="p-8 grid grid-cols-2 md:grid-cols-4 gap-4">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <Skeleton key={i} className="h-24 rounded-xl" />
-        ))}
+      <div className="space-y-3.5">
+        <PanelSkeleton variant="kpis" label="indicadores del periodo" />
+        <PanelSkeleton variant="tabla" label="estado de resultados" />
       </div>
     );
   }
 
-  if (!pnl) return null;
+  const r = actual.resultados;
+  const a = anterior.cargando ? null : anterior.resultados;
+  const delta = (valor: (x: Resultados) => number) =>
+    a ? calcularDelta(valor(r), valor(a)) : undefined;
 
-  // Sin entregas todavía ≠ negocio en riesgo — en COD el dinero/margen real
-  // no existe hasta ENTREGADO (§3 doc), así que "0 entregados pero X en
-  // camino" es una foto normal de inicio de periodo, no una alerta roja.
-  const sinEntregasConPedidos =
-    derivados.pedidosEntregados === 0 && derivados.pedidosTotales > 0;
+  const indicadores = indicadoresCod(r);
+  const nivelGeneral = peorNivel(indicadores.map((i) => i.nivel));
+  const enAlerta = indicadores.filter((i) => i.nivel === "ambar" || i.nivel === "rojo").length;
 
-  const heroTone = sinEntregasConPedidos
-    ? "from-slate-600 to-slate-800"
-    : semaforoFinal === "verde"
-      ? "from-emerald-600 to-emerald-800"
-      : semaforoFinal === "ambar"
-        ? "from-amber-600 to-amber-800"
-        : semaforoFinal === "rojo"
-          ? "from-red-600 to-red-800"
-          : "from-slate-700 to-slate-900";
-  const heroTitulo = sinEntregasConPedidos
-    ? `⏳ Sin entregas todavía — ${derivados.pedidosTotales} pedido${derivados.pedidosTotales === 1 ? "" : "s"} en camino`
-    : semaforoFinal === "verde"
-      ? "🟢 Negocio sano"
-      : semaforoFinal === "ambar"
-        ? "🟡 Atención — 1+ indicador en alerta"
-        : semaforoFinal === "rojo"
-          ? "🔴 Negocio en riesgo"
-          : "⚪ Sin datos suficientes";
+  const metaVentas = metaVentasMensual(metas);
+  const metaUtilidad = metas.profitAnual !== null ? metas.profitAnual / 12 : null;
+  const tramo = tramoDeMeta(fromDate, toDate);
 
-  const avanceVentasPct =
-    metaVentasMes > 0 ? (pnl.ventasBrutas / metaVentasMes) * 100 : null;
-  const avanceProfitPct =
-    metaProfitMes > 0 ? (pnl.utilidadNeta / metaProfitMes) * 100 : null;
-
-  const kpis = [
-    {
-      label: "Ventas brutas",
-      valor: pnl.ventasBrutas,
-      prev: pnlPrev?.ventasBrutas ?? null,
-    },
-    {
-      label: "Utilidad bruta real",
-      valor: pnl.utilidadBruta,
-      pct: pnl.margenBruto,
-      prev: pnlPrev?.utilidadBruta ?? null,
-    },
-    {
-      label: "Utilidad operativa",
-      valor: pnl.utilidadOperativa,
-      pct: pnl.margenOperativo,
-      prev: pnlPrev?.utilidadOperativa ?? null,
-    },
-    {
-      label: "Utilidad neta",
-      valor: pnl.utilidadNeta,
-      pct: pnl.margenNeto,
-      prev: pnlPrev?.utilidadNeta ?? null,
-    },
-  ];
-
-  const cascada = [
-    {
-      label: "Ventas brutas",
-      valor: pnl.ventasBrutas,
-      tipo: "positivo" as const,
-    },
-    {
-      label: "− COGS (costo de productos)",
-      valor: -pnl.cogs,
-      tipo: "negativo" as const,
-    },
-    {
-      label: `− Merma de inventario (${pnl.mermaUnidades} u.)`,
-      valor: -pnl.mermaCosto,
-      tipo: "negativo" as const,
-    },
-    {
-      label: "= Utilidad bruta real",
-      valor: pnl.utilidadBruta,
-      tipo: "subtotal" as const,
-      pct: pnl.margenBruto,
-    },
-    {
-      label: "− Fees marketplace",
-      valor: -pnl.feesMarketplace,
-      tipo: "negativo" as const,
-    },
-    {
-      label: "− Courier integrado (Shalom/Olva)",
-      valor: -pnl.courierIntegrado,
-      tipo: "negativo" as const,
-    },
-    {
-      label: "− Publicidad por conciliar",
-      valor: -pnl.gastosMarketing,
-      tipo: "negativo" as const,
-    },
-    {
-      label: "− Personal / planilla",
-      valor: -pnl.gastosPersonal,
-      tipo: "negativo" as const,
-    },
-    {
-      label: "− Courier propio",
-      valor: -pnl.gastosCourierPropio,
-      tipo: "negativo" as const,
-    },
-    {
-      label: "− Herramientas + oficina",
-      valor: -pnl.gastosHerramientas,
-      tipo: "negativo" as const,
-    },
-    {
-      label: "− Otros gastos",
-      valor: -pnl.gastosOtros,
-      tipo: "negativo" as const,
-    },
-    {
-      label: "= Utilidad operativa",
-      valor: pnl.utilidadOperativa,
-      tipo: "subtotal" as const,
-      pct: pnl.margenOperativo,
-    },
-    {
-      label: `− Comisión PowIp (${((auth?.company?.powipCommissionRate ?? 0.005) * 100).toFixed(2)}%)`,
-      valor: -pnl.comisionPowip,
-      tipo: "negativo" as const,
-      editable: true,
-    },
-    {
-      label: `− IGV / IR estimado (${auth?.company?.iva ?? 18}%)`,
-      valor: -pnl.igvEstimado,
-      tipo: "negativo" as const,
-    },
-    {
-      label: "= Utilidad neta",
-      valor: pnl.utilidadNeta,
-      tipo: "total" as const,
-      pct: pnl.margenNeto,
-    },
-  ];
-
-  const resumenMes = [
-    {
-      label: "Pedidos entregados",
-      valor: String(derivados.pedidosEntregados),
-      sub: `de ${derivados.pedidosTotales} registrados`,
-    },
-    {
-      label: "Adelantos en caja",
-      valor: fmt0(derivados.adelantosEnCaja),
-      sub: "pasivo · no es utilidad",
-    },
-    {
-      label: "Inversión manual",
-      valor: fmt0(derivados.inversionAds),
-      sub:
-        derivados.inversionAds > 0
-          ? "registrada en Pauta por canal"
-          : "sin registrar este periodo",
-    },
-    {
-      label: "Punto de equilibrio",
-      valor: `${derivados.puntoEquilibrioUds} uds`,
-      sub:
-        derivados.puntoEquilibrioUds > 0 && derivados.pedidosEntregados > 0
-          ? `${(derivados.unidadesEntregadas / derivados.puntoEquilibrioUds).toFixed(1)}× superado`
-          : "ver pestaña Equilibrio",
-    },
-  ];
+  const pe = r.puntoEquilibrio;
 
   return (
-    <div className="p-8 space-y-6">
-      <AdvertisingCompanySpend from={fromDate} to={toDate} />
-      <p className="text-sm text-muted-foreground">
-        Estos indicadores usan registros manuales por conciliar.
-      </p>
-      <div
-        className={cn("rounded-2xl p-6 text-white bg-gradient-to-br", heroTone)}
-      >
-        <div className="flex justify-between items-start flex-wrap gap-3">
-          <div>
-            <h2 className="text-xl font-bold">{heroTitulo}</h2>
-            <p className="text-sm opacity-95 mt-1">
-              {sinEntregasConPedidos ? (
-                "Todavía no hay ventas reconocidas este periodo — en COD la venta cuenta recién cuando el pedido llega a Entregado, no antes."
-              ) : (
-                <>
-                  Margen neto {pnl.margenNeto.toFixed(1)}% · CPV neto{" "}
-                  {derivados.cpvNeto != null ? fmt0(derivados.cpvNeto) : "—"} ·
-                  Ventas / inversión manual{" "}
-                  {derivados.roasPowip != null
-                    ? `${derivados.roasPowip.toFixed(1)}×`
-                    : "—"}
-                  {avanceVentasPct != null
-                    ? avanceVentasPct >= 100
-                      ? " · Cumpliendo meta"
-                      : " · Por debajo de la meta"
-                    : ""}
-                </>
-              )}
-            </p>
-          </div>
-          <div className="text-right text-xs opacity-90">
-            Periodo:{" "}
-            <b>
-              {fromDate} → {toDate}
-            </b>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
-          <div className="bg-white/15 rounded-lg p-3">
-            <p className="text-[11px] opacity-85">Ventas entregadas</p>
-            <p className="text-lg font-bold mt-0.5">{fmt0(pnl.ventasBrutas)}</p>
-          </div>
-          <div className="bg-white/15 rounded-lg p-3">
-            <p className="text-[11px] opacity-85">Ganancia neta</p>
-            <p className="text-lg font-bold mt-0.5">{fmt0(pnl.utilidadNeta)}</p>
-          </div>
-          <div className="bg-white/15 rounded-lg p-3">
-            <p className="text-[11px] opacity-85">Margen neto</p>
-            <p className="text-lg font-bold mt-0.5">
-              {pnl.margenNeto.toFixed(1)}%
-            </p>
-          </div>
-          <div className="bg-white/15 rounded-lg p-3">
-            <p className="text-[11px] opacity-85">Inversión manual</p>
-            <p className="text-lg font-bold mt-0.5">
-              {fmt0(derivados.inversionAds)}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {avanceVentasPct != null && (
-        <div
-          className={cn(
-            "rounded-lg border p-3.5 text-sm",
-            avanceVentasPct >= 100
-              ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/30 text-emerald-800 dark:text-emerald-300"
-              : "bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30 text-amber-800 dark:text-amber-300",
-          )}
-        >
-          {avanceVentasPct >= 100 ? "✅" : "📈"} <b>Avance del mes:</b>{" "}
-          {fmt0(pnl.ventasBrutas)} de meta {fmt0(metaVentasMes)} ={" "}
-          <b>{avanceVentasPct.toFixed(1)}%</b>.{" "}
-          {avanceVentasPct < 100
-            ? `Faltan ${fmt0(Math.max(0, metaVentasMes - pnl.ventasBrutas))}. `
-            : ""}
-          {avanceProfitPct != null &&
-            (avanceProfitPct >= 100
-              ? `Meta de profit ya superada (${avanceProfitPct.toFixed(1)}%).`
-              : `Meta de profit al ${avanceProfitPct.toFixed(1)}%.`)}
-        </div>
+    <div className="space-y-3.5">
+      <AvisoCostos costo={r.costo} />
+      <NotaSinHistorial cantidad={actual.servidor.calidad.entregasSinHistorial} />
+      {r.pedidos === 0 && pedidosEnCurso > 0 && (
+        <Aviso tono="info" titulo="Todavía no hay ventas en el periodo">
+          Hay {plural(pedidosEnCurso, "pedido", "pedidos")} en curso. En contra entrega la venta
+          cuenta recién cuando el pedido se entrega.
+        </Aviso>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            📦 Semáforo COD del periodo{" "}
-            <NivelPill nivel={semaforoFinal}>
-              {semaforoFinal === "sin-datos"
-                ? "Sin datos suficientes"
-                : `${indicadoresEnAlerta} indicador${indicadoresEnAlerta === 1 ? "" : "es"} en alerta`}
-            </NivelPill>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {semaforoCod.map((s) => (
-              <div
-                key={s.nombre}
-                className={cn(
-                  "rounded-lg border p-3",
-                  s.nivel === "ambar" && "border-amber-300",
-                  s.nivel === "rojo" && "border-red-300",
-                )}
-              >
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-semibold text-muted-foreground">
-                    {s.nombre}
-                  </span>
-                  <NivelDot nivel={s.nivel} />
-                </div>
-                <p
-                  className={cn(
-                    "text-xl font-bold mt-1.5",
-                    s.nivel === "ambar" && "text-amber-600",
-                    s.nivel === "rojo" && "text-destructive",
-                  )}
-                >
-                  {s.valor}
-                </p>
-                <p className="text-[10px] text-muted-foreground border-t border-dashed pt-1.5 mt-1.5">
-                  {s.umbral}
-                </p>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      <section aria-label="Indicadores del periodo" className="space-y-1.5">
+        <p className="text-[11px] text-pc-text-muted">
+          Variación comparada con{" "}
+          <span className="font-semibold text-pc-text">
+            {etiquetaPeriodo(rangoAnterior.desde, rangoAnterior.hasta)}
+          </span>
+        </p>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <KpiCard
+            label="Ventas"
+            value={formatSoles(r.ventas)}
+            delta={delta((x) => x.ventas)}
+            sub={`Sin IGV: ${formatSoles(r.ventasSinIgv)}`}
+          />
+          <KpiCard
+            label="Utilidad bruta"
+            value={formatSoles(r.utilidadBruta)}
+            delta={delta((x) => x.utilidadBruta)}
+            sub={`Margen ${formatPercent(r.margenBruto, 1)}`}
+          />
+          <KpiCard
+            label="Utilidad operativa"
+            value={formatSoles(r.utilidadOperativa)}
+            delta={delta((x) => x.utilidadOperativa)}
+            sub={`Margen ${formatPercent(r.margenOperativo, 1)}`}
+          />
+          <KpiCard
+            label="Pedidos entregados"
+            value={formatNumber(r.pedidos)}
+            delta={delta((x) => x.pedidos)}
+            sub={`Ticket promedio ${formatSoles(r.ticketPromedio)} · ${plural(r.unidades, "unidad", "unidades")}`}
+          />
+        </div>
+      </section>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {kpis.map((kpi) => (
-          <Card key={kpi.label}>
-            <CardHeader className="pb-1">
-              <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                {kpi.label}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold font-mono">{fmt(kpi.valor)}</p>
-              <div className="flex items-center gap-2 mt-1">
-                {kpi.pct !== undefined && (
-                  <p className="text-xs text-muted-foreground">
-                    {kpi.pct.toFixed(1)}% de margen
-                  </p>
-                )}
-                <DeltaBadge current={kpi.valor} prev={kpi.prev} />
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[3fr_2fr]">
+        <PanelCard
+          titulo="Estado de resultados"
+          subtitulo="De las ventas entregadas a la utilidad operativa. Los % son sobre las ventas con IGV."
+        >
+          <TablaCascada
+            lineas={lineasCascada(r, actual.publicidad, igvPct, actual.flete)}
+            base={r.ventas}
+            caption="Estado de resultados del periodo"
+          />
+        </PanelCard>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-semibold">
-              💰 Cascada de utilidad
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1">
-            {cascada.map((row) => (
-              <div
-                key={row.label}
-                className={`flex items-center justify-between px-3 py-2 rounded-md text-sm ${
-                  row.tipo === "subtotal"
-                    ? "bg-muted font-semibold"
-                    : row.tipo === "total"
-                      ? "bg-primary/10 font-bold text-primary"
-                      : ""
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <span
-                    className={
-                      row.tipo === "negativo" ? "text-muted-foreground" : ""
-                    }
-                  >
-                    {row.label}
-                  </span>
-                  {(row as any).editable && !editingRate && (
-                    <button
-                      onClick={() => {
-                        setRateInput(
-                          (
-                            (auth?.company?.powipCommissionRate ?? 0.005) * 100
-                          ).toFixed(2),
-                        );
-                        setEditingRate(true);
-                      }}
-                      className="text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      <Pencil className="h-3 w-3" />
-                    </button>
-                  )}
-                  {(row as any).editable && editingRate && (
-                    <div className="flex items-center gap-1">
-                      <Input
-                        type="number"
-                        min={0}
-                        max={100}
-                        step={0.01}
-                        value={rateInput}
-                        onChange={(e) => setRateInput(e.target.value)}
-                        className="h-6 w-20 text-xs px-1"
-                        autoFocus
-                      />
-                      <span className="text-xs text-muted-foreground">%</span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={handleSaveRate}
-                        disabled={savingRate}
-                      >
-                        <Check className="h-3 w-3 text-green-600" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={() => setEditingRate(false)}
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center gap-3">
-                  {row.pct !== undefined && (
-                    <span className="text-xs text-muted-foreground font-mono">
-                      {row.pct.toFixed(1)}%
+        <div className="min-w-0 space-y-3.5">
+          <PanelCard
+            titulo="Semáforo contra entrega"
+            subtitulo="Publicidad = cuentas conectadas + Gastos › Publicidad"
+            acciones={
+              <NivelPill nivel={nivelGeneral}>
+                {nivelGeneral === "sin-datos"
+                  ? "Sin datos suficientes"
+                  : enAlerta === 0
+                    ? "Todo en verde"
+                    : `${enAlerta} ${enAlerta === 1 ? "indicador" : "indicadores"} en alerta`}
+              </NivelPill>
+            }
+          >
+            <ul className="divide-y divide-pc-border-soft">
+              {indicadores.map((indicador) => (
+                <li key={indicador.id} className="flex items-start gap-3 py-2 first:pt-0 last:pb-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-pc-text">{indicador.nombre}</p>
+                    <p className="text-[11px] text-pc-text-muted">{indicador.ayuda}</p>
+                    <p className="text-[10.5px] text-pc-text-soft">{indicador.umbral}</p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <span className="text-base font-bold tabular-nums text-pc-text">
+                      {indicador.valor}
                     </span>
-                  )}
-                  <span
-                    className={`font-mono ${row.valor < 0 ? "text-destructive" : row.tipo === "total" ? "text-primary" : ""}`}
-                  >
-                    {fmt(row.valor)}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-semibold">
-              Resumen del periodo
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              {resumenMes.map((r) => (
-                <div key={r.label}>
-                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-                    {r.label}
-                  </p>
-                  <p className="text-xl font-bold font-mono mt-1">{r.valor}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {r.sub}
-                  </p>
-                </div>
+                    <NivelPill nivel={indicador.nivel}>{ETIQUETA_NIVEL[indicador.nivel]}</NivelPill>
+                  </div>
+                </li>
               ))}
-            </div>
-            <div className="rounded-lg border bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/30 p-3 text-xs text-blue-800 dark:text-blue-300 mt-4">
-              💡 Los adelantos entran a caja pero no son utilidad hasta que el
-              pedido sea Entregado. Los ves separados en Flujo de Caja.
-            </div>
-          </CardContent>
-        </Card>
+            </ul>
+          </PanelCard>
+
+          <PanelCard titulo={tramo.titulo} subtitulo={tramo.explicacion}>
+            {metaVentas === null && metaUtilidad === null ? (
+              <p className="text-xs text-pc-text-muted">
+                <span className="font-semibold text-pc-text">Sin meta</span> · cárgala en{" "}
+                <Link
+                  href="/administracion/anual"
+                  className="font-semibold text-pc-primary hover:underline"
+                >
+                  Resultados › Resumen anual
+                </Link>
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {metaVentas !== null ? (
+                  <FilaAvance
+                    etiqueta="Ventas"
+                    logrado={r.ventas}
+                    meta={metaVentas * tramo.factor}
+                  />
+                ) : (
+                  <Nota>Sin meta de ventas.</Nota>
+                )}
+                {metaUtilidad !== null && (
+                  <FilaAvance
+                    etiqueta="Utilidad operativa"
+                    logrado={r.utilidadOperativa}
+                    meta={metaUtilidad * tramo.factor}
+                  />
+                )}
+              </div>
+            )}
+          </PanelCard>
+
+          <PanelCard
+            titulo="Punto de equilibrio"
+            subtitulo="Ventas que cubren los gastos fijos del periodo con el margen de contribución actual"
+            acciones={
+              <Link
+                href="/administracion/equilibrio"
+                className="rounded text-xs font-semibold text-pc-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-pc-primary"
+              >
+                Ver detalle →
+              </Link>
+            }
+          >
+            {r.gastosFijos <= 0 ? (
+              <Nota>
+                Sin gastos fijos cargados en el periodo: no hay punto de equilibrio que calcular.
+              </Nota>
+            ) : pe.ventas === null ? (
+              <Nota>
+                {r.ventas > 0
+                  ? "La contribución es cero o negativa: con estos costos ninguna venta cubre los gastos fijos."
+                  : "Sin ventas en el periodo: todavía no hay margen para calcularlo."}
+              </Nota>
+            ) : (
+              <div className="space-y-2">
+                <dl className="grid grid-cols-2 gap-3">
+                  <Dato label="Ventas necesarias" valor={formatSoles(pe.ventas)} />
+                  <Dato
+                    label="Unidades necesarias"
+                    valor={formatNumber(pe.unidades)}
+                    sub={`Vendidas: ${formatNumber(r.unidades)}`}
+                  />
+                </dl>
+                <ProgressBar
+                  logrado={r.ventas}
+                  meta={pe.ventas}
+                  etiqueta="Ventas sobre el punto de equilibrio"
+                />
+                <p className="text-xs text-pc-text">
+                  {pe.avance !== null && pe.avance >= 1 ? (
+                    <>
+                      <span className="font-semibold text-pc-ok">Superado</span>: las ventas cubren{" "}
+                      {formatVeces(pe.avance)} el punto de equilibrio.
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-semibold text-pc-warn">Por debajo</span>: faltan{" "}
+                      {formatSoles(pe.ventas - r.ventas)} para cubrir los gastos fijos (vas al{" "}
+                      {formatPercent(pe.avance)}).
+                    </>
+                  )}
+                </p>
+              </div>
+            )}
+          </PanelCard>
+
+          <PanelCard
+            titulo="Adelantos de pedidos aún no entregados"
+            subtitulo="Pagos registrados de pedidos creados en el periodo que todavía no se entregan"
+          >
+            <dl>
+              <Dato
+                label="Cobrado por adelantado"
+                valor={formatSoles(adelantos.monto)}
+                sub={`${plural(adelantos.pedidos, "pedido", "pedidos")} · sin entregados, anulados, incompletos ni leads`}
+              />
+            </dl>
+            <p className="mt-2 text-[11px] text-pc-text-muted">
+              Es plata en caja, no utilidad: entra a las ventas cuando el pedido se entrega.
+            </p>
+          </PanelCard>
+        </div>
       </div>
     </div>
   );

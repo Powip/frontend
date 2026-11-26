@@ -25,6 +25,8 @@ export interface EmbeddedSignupLaunchConfig {
 export interface EmbeddedSignupResult {
   code: string;
   wabaId?: string;
+  /** Flujos con varias WABA: Meta manda `waba_ids` en lugar de un solo `waba_id`. */
+  wabaIds?: string[];
   phoneNumberId?: string;
 }
 
@@ -106,7 +108,7 @@ export function resetFacebookSdkForTests() {
 export function parseEmbeddedSignupMessage(
   origin: string,
   data: unknown,
-): { wabaId?: string; phoneNumberId?: string } | null {
+): { wabaId?: string; wabaIds?: string[]; phoneNumberId?: string } | null {
   if (!/^https:\/\/([a-z0-9-]+\.)*facebook\.com$/i.test(origin)) return null;
   let payload: unknown = data;
   if (typeof data === "string") {
@@ -119,12 +121,16 @@ export function parseEmbeddedSignupMessage(
   const msg = payload as {
     type?: string;
     event?: string;
-    data?: { waba_id?: string; phone_number_id?: string };
+    data?: { waba_id?: string; waba_ids?: unknown; phone_number_id?: string };
   };
   if (msg?.type !== "WA_EMBEDDED_SIGNUP") return null;
   if (!msg.event || !msg.event.startsWith("FINISH")) return null;
+  const wabaIds = Array.isArray(msg.data?.waba_ids)
+    ? msg.data.waba_ids.filter((id): id is string => typeof id === "string" && id.length > 0)
+    : [];
   return {
     ...(msg.data?.waba_id ? { wabaId: msg.data.waba_id } : {}),
+    ...(wabaIds.length ? { wabaIds } : {}),
     ...(msg.data?.phone_number_id ? { phoneNumberId: msg.data.phone_number_id } : {}),
   };
 }
@@ -142,7 +148,7 @@ export async function launchEmbeddedSignup(
   }
   const fb = await loadFacebookSdk(config.appId, config.apiVersion);
 
-  let shared: { wabaId?: string; phoneNumberId?: string } = {};
+  let shared: { wabaId?: string; wabaIds?: string[]; phoneNumberId?: string } = {};
   const onMessage = (event: MessageEvent) => {
     const ids = parseEmbeddedSignupMessage(event.origin, event.data);
     if (ids) shared = { ...shared, ...ids };

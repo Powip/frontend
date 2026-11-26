@@ -29,6 +29,9 @@ import {
   calculateSunatDocumentTotals,
   roundCurrency,
 } from "@/features/sunat/sunat-document/utils/calculate-sunat-document-totals";
+import { isGiftTaxType } from "@/features/sunat/sunat-document/utils/gift-lines";
+import { NUEVO_RUS_TAX_TYPE } from "@/features/sunat/sunat-document/utils/nuevo-rus";
+import { isNuevoRus } from "@/features/sunat/sunat-profile/utils/tax-regime";
 
 /**
  * `unitPrice` is deliberately stored at full (unrounded) precision when it
@@ -105,7 +108,10 @@ function formatPrice(value: unknown): string {
   return roundCurrency(num).toFixed(2);
 }
 
-export function ItemsEditTable() {
+export function ItemsEditTable({ taxRegime }: { taxRegime?: string } = {}) {
+  // Nuevo RUS: prices carry no IGV and new lines use its tax type.
+  const nuevoRus = isNuevoRus(taxRegime);
+
   const { control, register, setValue, getValues } =
     useFormContext<CreateSunatDocumentsFormValues>();
 
@@ -182,7 +188,7 @@ export function ItemsEditTable() {
       subtotal: 0,
       discountAmount: 0,
       unitCode: UNIT_CODES.UNIT,
-      taxType: SUNAT_TAX_AFFECTATION_TYPES.GRAVADO,
+      taxType: nuevoRus ? NUEVO_RUS_TAX_TYPE : SUNAT_TAX_AFFECTATION_TYPES.GRAVADO,
     });
   }
 
@@ -197,13 +203,20 @@ export function ItemsEditTable() {
               <TableHead className="w-20">Cant.</TableHead>
 
               <TableHead className="w-28">
-                P. Unit. <span className="font-normal text-muted-foreground">(sin IGV)</span>
+                P. Unit.{" "}
+                {!nuevoRus && <span className="font-normal text-muted-foreground">(sin IGV)</span>}
               </TableHead>
 
-              <TableHead className="w-24">Descuento</TableHead>
+              <TableHead className="w-24">
+                Descuento{" "}
+                <span className="block font-normal text-muted-foreground">
+                  {nuevoRus ? "(S/)" : "(S/ sin IGV)"}
+                </span>
+              </TableHead>
 
               <TableHead className="w-28 text-right">
-                Importe <span className="font-normal text-muted-foreground">(con IGV)</span>
+                Importe{" "}
+                {!nuevoRus && <span className="font-normal text-muted-foreground">(con IGV)</span>}
               </TableHead>
 
               <TableHead className="w-8" />
@@ -265,6 +278,10 @@ export function ItemsEditTable() {
                */
               const lineImporte = roundCurrency(roundCurrency(taxableBase) + lineTax);
 
+              // A gift (13/31) is charged S/ 0.00: its price is set in the
+              // gift panel, not here.
+              const isGift = isGiftTaxType(item.taxType);
+
               return (
                 <TableRow key={field.id}>
                   <TableCell>
@@ -272,6 +289,13 @@ export function ItemsEditTable() {
                       {...register(`documents.0.items.${index}.productName`)}
                       className="h-8 text-xs"
                     />
+                    {isGift && (
+                      <span className="mt-1 inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                        {item.taxType === SUNAT_TAX_AFFECTATION_TYPES.REGALO_APARTE
+                          ? "Regalo aparte"
+                          : "Regalo de promoción"}
+                      </span>
+                    )}
                   </TableCell>
 
                   <TableCell>
@@ -287,19 +311,27 @@ export function ItemsEditTable() {
                   </TableCell>
 
                   <TableCell>
-                    <AmountInput
-                      name={`documents.0.items.${index}.unitPrice`}
-                      control={control}
-                      label={`Precio unitario de ${item.productName}`}
-                    />
+                    {isGift ? (
+                      <span className="text-xs text-muted-foreground">0.00</span>
+                    ) : (
+                      <AmountInput
+                        name={`documents.0.items.${index}.unitPrice`}
+                        control={control}
+                        label={`Precio unitario de ${item.productName}`}
+                      />
+                    )}
                   </TableCell>
 
                   <TableCell>
-                    <AmountInput
-                      name={`documents.0.items.${index}.discountAmount`}
-                      control={control}
-                      label={`Descuento de ${item.productName}`}
-                    />
+                    {isGift ? (
+                      <span className="text-xs text-muted-foreground">0.00</span>
+                    ) : (
+                      <AmountInput
+                        name={`documents.0.items.${index}.discountAmount`}
+                        control={control}
+                        label={`Descuento de ${item.productName}`}
+                      />
+                    )}
                   </TableCell>
 
                   <TableCell className="text-right text-xs font-medium">

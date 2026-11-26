@@ -5,7 +5,16 @@ import {
   needsCoexistenceConfirmation,
   type PhoneMismatch,
   phoneMismatch,
+  type SignupPhoneChoice,
+  type SignupReassign,
+  signupPhoneChoice,
+  signupReassign,
+  signupSelectionId,
 } from "@/app/configuracion/whatsapp/_components/conexion/connection-types";
+import {
+  PhoneReassignDialog,
+  PhoneSelectionDialog,
+} from "@/app/configuracion/whatsapp/_components/conexion/SignupPhoneDialogs";
 import {
   NoCoexistenceDialog,
   PhoneMismatchDialog,
@@ -21,6 +30,7 @@ import {
   connectCustomWaba,
   getEmbeddedSignupConfig,
   integrationsErrorMessage,
+  selectEmbeddedSignupPhone,
 } from "@/services/crmTeamService";
 import type { Template } from "@/types/crm";
 import type { EmbeddedSignupConfig } from "@/types/crmTeam";
@@ -82,6 +92,10 @@ export default function AjustesWhatsAppCard() {
   const [signupConfigError, setSignupConfigError] = useState<string | null>(null);
   // Alta que Meta frenó por falta de coexistencia: se repite solo si la persona acepta.
   const [pendingRetry, setPendingRetry] = useState<(() => Promise<void>) | null>(null);
+  // «Conectar con Facebook» con varios números: el token queda en el servidor y la persona
+  // elige (o confirma) sin abrir Meta otra vez.
+  const [phoneChoice, setPhoneChoice] = useState<SignupPhoneChoice | null>(null);
+  const [reassign, setReassign] = useState<SignupReassign | null>(null);
   const [phoneRetry, setPhoneRetry] = useState<{
     mismatch: PhoneMismatch;
     retry: () => Promise<void>;
@@ -154,29 +168,68 @@ export default function AjustesWhatsAppCard() {
     }
   };
 
+  type Flags = { confirmNoCoexistence?: boolean; confirmReassign?: boolean };
+
+  /** Lista, aviso o error cuando el backend no conectó nada. */
+  const onSignupFailure = (err: unknown, flags: Flags, reopen: () => Promise<void>) => {
+    const list = signupPhoneChoice(err);
+    if (list) return setPhoneChoice(list);
+    const move = signupReassign(err);
+    if (move?.selectionId) {
+      const selectionId = move.selectionId;
+      setReassign(move);
+      setPendingSelect(() => () => selectPhone(selectionId, undefined, { ...flags, confirmReassign: true }));
+      return;
+    }
+    if (!flags.confirmNoCoexistence && needsCoexistenceConfirmation(err)) {
+      const selectionId = signupSelectionId(err);
+      // Con conexión pendiente se confirma sin Meta; sin ella, se abre Meta otra vez.
+      setPendingRetry(() =>
+        selectionId
+          ? () => selectPhone(selectionId, undefined, { ...flags, confirmNoCoexistence: true })
+          : reopen,
+      );
+      return;
+    }
+    setError(
+      err instanceof EmbeddedSignupCancelledError ? err.message : integrationsErrorMessage(err),
+    );
+  };
+
+  const [pendingSelect, setPendingSelect] = useState<(() => Promise<void>) | null>(null);
+  const [choiceFlags, setChoiceFlags] = useState<Flags>({});
+
+  const selectPhone = async (selectionId: string, phoneNumberId: string | undefined, flags: Flags) => {
+    setSigningUp(true);
+    setError(null);
+    try {
+      const res = await selectEmbeddedSignupPhone({ storeId, selectionId, phoneNumberId, ...flags });
+      setConnected(res.data?.businessPhoneNumber || "número de WhatsApp");
+    } catch (err) {
+      onSignupFailure(err, flags, () => connectWithFacebook(true));
+    } finally {
+      setSigningUp(false);
+    }
+  };
+
   const connectWithFacebook = async (confirmNoCoexistence = false) => {
     if (!signupConfig || !storeId) return;
     setSigningUp(true);
     setError(null);
     setConnected(null);
+    const flags: Flags = confirmNoCoexistence ? { confirmNoCoexistence: true } : {};
+    setChoiceFlags(flags);
     try {
       const shared = await launchEmbeddedSignup(signupConfig);
       const res = await completeEmbeddedSignup({
         storeId,
         ...shared,
         ...(asCompanyDefault ? { asCompanyDefault: true } : {}),
-        ...(confirmNoCoexistence ? { confirmNoCoexistence: true } : {}),
+        ...flags,
       });
       setConnected(res.data?.businessPhoneNumber || "número de WhatsApp");
     } catch (err) {
-      // El código de Facebook ya se gastó: si acepta, se abre Meta otra vez.
-      if (!confirmNoCoexistence && needsCoexistenceConfirmation(err)) {
-        setPendingRetry(() => () => connectWithFacebook(true));
-        return;
-      }
-      setError(
-        err instanceof EmbeddedSignupCancelledError ? err.message : integrationsErrorMessage(err),
-      );
+      onSignupFailure(err, flags, () => connectWithFacebook(true));
     } finally {
       setSigningUp(false);
     }
@@ -253,6 +306,32 @@ export default function AjustesWhatsAppCard() {
           const retry = pendingRetry;
           setPendingRetry(null);
           if (retry) void retry();
+        }}
+      />
+      <PhoneSelectionDialog
+        choice={phoneChoice}
+        onCancel={() => {
+          setPhoneChoice(null);
+          setError("No se conectó el número.");
+        }}
+        onConfirm={(phoneNumberId) => {
+          const selectionId = phoneChoice?.selectionId;
+          setPhoneChoice(null);
+          if (selectionId) void selectPhone(selectionId, phoneNumberId, choiceFlags);
+        }}
+      />
+      <PhoneReassignDialog
+        reassign={reassign}
+        onCancel={() => {
+          setReassign(null);
+          setPendingSelect(null);
+          setError("No se conectó el número.");
+        }}
+        onConfirm={() => {
+          const next = pendingSelect;
+          setReassign(null);
+          setPendingSelect(null);
+          if (next) void next();
         }}
       />
       <PhoneMismatchDialog

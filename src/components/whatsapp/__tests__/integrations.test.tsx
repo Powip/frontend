@@ -16,6 +16,10 @@ import {
 import { OrderWhatsAppMessages, OrderWhatsAppMessagesView } from "../OrderWhatsAppMessages";
 import { getWhatsAppConversationsByOrder } from "@/features/whatsapp/api/threads.api";
 
+let mockEmail = "joel@aranni.com.pe";
+jest.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => ({ auth: { user: { email: mockEmail } } }),
+}));
 jest.mock("@/features/whatsapp/api/threads.api", () => ({
   getWhatsAppConversationsByOrder: jest.fn(),
 }));
@@ -52,6 +56,15 @@ describe("Mensajes de WhatsApp en la ficha del pedido", () => {
     byOrderMock.mockRejectedValueOnce(new Error("Sin conexión"));
     render(<OrderWhatsAppMessages orderId="order-3" />);
     expect(await screen.findByText(/No se pudieron cargar los mensajes de WhatsApp/)).toBeInTheDocument();
+  });
+
+  it("sin acceso a la pestaña muestra los mensajes pero no «Abrir conversación»", async () => {
+    mockEmail = "demo@tienda.pe";
+    byOrderMock.mockResolvedValueOnce(orderThreadsFixture);
+    render(<OrderWhatsAppMessages orderId="order-4" />);
+    expect(await screen.findAllByText(orderThreadsFixture[0].phone)).not.toHaveLength(0);
+    expect(screen.queryByRole("link", { name: /Abrir conversación/ })).not.toBeInTheDocument();
+    mockEmail = "joel@aranni.com.pe";
   });
 
   it("distingue vacío, error y contenido con acceso a la conversación real", () => {
