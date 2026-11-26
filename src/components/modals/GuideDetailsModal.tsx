@@ -64,6 +64,7 @@ import ShalomShippingLabelsModal from "./ShalomShippingLabelsModal";
 import SendToShalomModal from "@/components/shalom/SendToShalomModal";
 import SendToAliclikGuideModal from "@/components/aliclik/SendToAliclikGuideModal";
 import SendToEvaGuideModal from "@/components/eva/SendToEvaGuideModal";
+import SendToOlvaModal from "@/components/olva/send-to-olva/SendToOlvaModal";
 import EvaStatusBadge from "@/components/eva/EvaStatusBadge";
 import { FileSpreadsheet } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -73,6 +74,7 @@ import {
   isShalomCourier,
   isAliclikCourier,
   isEvaCourier,
+  isOlvaCourier,
 } from "@/utils/courierNormalizer";
 
 export interface ShippingGuide {
@@ -276,6 +278,10 @@ export default function GuideDetailsModal({
   const [shalomModalOpen, setShalomModalOpen] = useState(false);
   const [shalomLabelsOpen, setShalomLabelsOpen] = useState(false);
   useEffect(() => setShalomLabelsOpen(false), [open, readScope]);
+
+  // Olva modal
+  const [olvaModalOpen, setOlvaModalOpen] = useState(false);
+
   // Aliclik modal
   const [aliclikModalOpen, setAliclikModalOpen] = useState(false);
   // EVA modal
@@ -2232,6 +2238,26 @@ export default function GuideDetailsModal({
                     </div>
                   );
                 })()}
+              {guide &&
+                guide.status === "APROBADA" &&
+                isOlvaCourier(guide.courierName) &&
+                ordersDetails.length > 0 && (
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => setOlvaModalOpen(true)}
+                      className={
+                        selectedOrderIds.size > 0
+                          ? "bg-blue-600 hover:bg-blue-700 text-white"
+                          : "bg-orange-500 hover:bg-orange-600 text-white"
+                      }
+                    >
+                      <Truck className="h-4 w-4 mr-2" />
+                      {selectedOrderIds.size > 0
+                        ? `Enviar a Olva (${selectedOrderIds.size})`
+                        : `Registrar en Olva (${ordersDetails.length})`}
+                    </Button>
+                  </div>
+                )}
               {guide && (
                 <>
                   <Button variant="outline" onClick={handleExportExcel}>
@@ -2301,6 +2327,25 @@ export default function GuideDetailsModal({
             ? ordersDetails.filter((o) => selectedOrderIds.has(o.id))
             : ordersDetails
         }
+        onSuccess={() => {
+          fetchGuide();
+          void invalidateBusinessData();
+          onGuideUpdated?.();
+        }}
+      />
+
+      {/* Modal de Envío a Olva */}
+      <SendToOlvaModal
+        open={olvaModalOpen}
+        guideId={guideId || guide?.id || ""}
+        companyId={companyId || ""}
+        guide={guide}
+        orders={
+          selectedOrderIds.size > 0
+            ? ordersDetails.filter((o) => selectedOrderIds.has(o.id))
+            : ordersDetails
+        }
+        onClose={() => setOlvaModalOpen(false)}
         onSuccess={() => {
           fetchGuide();
           void invalidateBusinessData();

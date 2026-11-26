@@ -117,7 +117,8 @@ interface AuthContextType {
   refreshSession: () => Promise<boolean>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+// Exported so Storybook and tests can provide a session without the real provider
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Solo guardamos preferencias no sensibles
 const STORE_PREFERENCE_KEY = "selectedStoreId";
