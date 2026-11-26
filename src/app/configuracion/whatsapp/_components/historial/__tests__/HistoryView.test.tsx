@@ -120,6 +120,7 @@ describe("Indicadores", () => {
       within(region).getByText("No cuentan como enviados, entregados ni leídos."),
     ).toBeInTheDocument();
     expect(within(region).getByText(/Abrir el link no prueba que leyó/)).toBeInTheDocument();
+    expect(within(region).getByText("Enviados a mano desde el celular")).toBeInTheDocument();
   });
 
   it("con ceros reales no divide por cero", () => {
@@ -149,7 +150,7 @@ describe("Tabla", () => {
     renderView();
     const row = rowFor("Rosa Chávez");
     expect(
-      within(row).getByText("Número de contingencia · marcado por Katherine F."),
+      within(row).getByText("Enviado a mano · marcado por Katherine F."),
     ).toBeInTheDocument();
     await user.click(within(row).getByRole("button", { name: /ver línea de tiempo/ }));
     const timeline = screen.getByRole("list", { name: "Línea de tiempo" });

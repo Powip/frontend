@@ -89,7 +89,7 @@ const STATUS_LEGEND = [
   {
     title: "Asistido",
     icon: <UserRound className="size-3.5 text-wa-muted" aria-hidden="true" />,
-    text: "Lo envió una asesora a mano desde el número de contingencia. No tiene confirmación de entrega ni de lectura.",
+    text: "Una persona lo envió a mano desde el celular. No tiene confirmación de entrega ni de lectura.",
   },
 ];
 
