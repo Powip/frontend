@@ -6,12 +6,10 @@ import {
   getMarketplaceConfigs,
 } from "@/api/Admin";
 import { formatSoles } from "@/features/panel-control/shared/utils/format";
-import { useAdminOrders } from "@/hooks/useAdminQueries";
 import type { IMarketplaceConfig } from "@/interfaces/IAdmin";
-import type { PublicidadConectada } from "../../_lib/publicidad";
-import { calcularResultados, prorratearGastos } from "../../_lib/resultados";
-import { type DatosPeriodo, useResultadosPeriodo } from "../../_lib/useResultados";
-import { type PedidoAdmin, resumirVentas } from "../../_lib/ventas";
+import { datosPeriodoDe, servidorDePedidos } from "../../_lib/__tests__/servidor-fixtures";
+import { type DatosPeriodo, useResultadosPeriodo, useVentasServidor } from "../../_lib/useResultados";
+import type { PedidoAdmin } from "../../_lib/ventas";
 import CanalesPage from "../page";
 
 jest.mock("@/contexts/AdminPeriodContext", () => ({
@@ -19,9 +17,9 @@ jest.mock("@/contexts/AdminPeriodContext", () => ({
 }));
 jest.mock("../../_lib/useResultados", () => ({
   useResultadosPeriodo: jest.fn(),
+  useVentasServidor: jest.fn(),
   useAdminContexto: () => ({ companyId: "c1", token: "t", storeIds: [], igvPct: 18, hoy: "2026-11-26" }),
 }));
-jest.mock("@/hooks/useAdminQueries", () => ({ useAdminOrders: jest.fn() }));
 jest.mock("@/api/Admin", () => ({
   getMarketplaceConfigs: jest.fn(),
   createMarketplaceConfig: jest.fn(),
@@ -34,31 +32,7 @@ const DESDE = "2026-11-01";
 const HASTA = "2026-11-26";
 
 function datosDe(pedidos: PedidoAdmin[]): DatosPeriodo {
-  const ventas = resumirVentas(pedidos);
-  const gastos = prorratearGastos([], DESDE, HASTA);
-  const publicidad: PublicidadConectada = {
-    estado: "sin_cuentas",
-    monto: 0,
-    porDia: new Map(),
-    cobertura: null,
-    diasFaltantes: 0,
-    provisional: false,
-    otrasMonedas: [],
-  };
-  return {
-    desde: DESDE,
-    hasta: HASTA,
-    cargando: false,
-    error: null,
-    pedidos,
-    ventas,
-    gastos,
-    gastosCrudos: [],
-    merma: { unidades: 0, costo: 0 },
-    envios: 0,
-    publicidad,
-    resultados: calcularResultados({ ventas, gastos, merma: 0, envios: 0, publicidadConectada: 0, igvPct: 18 }),
-  };
+  return datosPeriodoDe(DESDE, HASTA, pedidos);
 }
 
 const pedido = (id: string, salesChannel: string, grandTotal: number, items: PedidoAdmin["items"], extra = {}) => ({
@@ -80,7 +54,7 @@ const PEDIDOS_PERIODO: PedidoAdmin[] = [
   pedido("p5", "MERCADOLIBRE", 100, [{ quantity: 1 }]),
 ];
 
-/** Últimos 90 días: «Falabella» es la grafía más usada; los de Shopify dicen «WEB». */
+/** Ventas de los últimos 90 días: «Falabella» es la grafía más usada; los de Shopify dicen «WEB». */
 const PEDIDOS_90_DIAS: PedidoAdmin[] = [
   ...PEDIDOS_PERIODO,
   pedido("p6", "Falabella", 80, [{ quantity: 1 }]),
@@ -111,11 +85,12 @@ function renderPagina() {
 beforeEach(() => {
   jest.clearAllMocks();
   jest.mocked(useResultadosPeriodo).mockReturnValue(datosDe(PEDIDOS_PERIODO));
-  jest
-    .mocked(useAdminOrders)
-    .mockReturnValue({ data: PEDIDOS_90_DIAS, isLoading: false, isError: false } as unknown as ReturnType<
-      typeof useAdminOrders
-    >);
+  jest.mocked(useVentasServidor).mockReturnValue({
+    data: servidorDePedidos(PEDIDOS_90_DIAS, "2026-08-29", "2026-11-26"),
+    isLoading: false,
+    isError: false,
+    error: null,
+  });
   jest
     .mocked(getMarketplaceConfigs)
     .mockResolvedValue([config("m1", "MERCADO LIBRE", "10.00"), config("s1", "SHOPIFY", "5.00")]);
@@ -157,6 +132,15 @@ it("marca las comisiones que no coinciden con ningún pedido y sugiere la grafí
   expect(items[0]).toHaveTextContent("No coincide con ningún pedido");
   expect(items[0]).toHaveTextContent("Grafía sugerida: «MERCADOLIBRE»");
   expect(items[1]).toHaveTextContent("Grafía sugerida: «WEB»");
+});
+
+it("comprueba la grafía contra las ventas entregadas de los últimos 90 días (no los pedidos en curso)", async () => {
+  jest.mocked(getMarketplaceConfigs).mockResolvedValue([config("w1", "WhatsApp", "3.00")]);
+  renderPagina();
+  const lista = await screen.findByRole("list", { name: "Comisiones configuradas" });
+  // p1 entregado cuenta; p4 (PENDIENTE) no es venta.
+  expect(within(lista).getByText("Coincide con 1 venta entregada en los últimos 90 días.")).toBeInTheDocument();
+  expect(useVentasServidor).toHaveBeenCalledWith("2026-08-29", "2026-11-26");
 });
 
 it("guarda una comisión nueva con la grafía cruda más usada del canal", async () => {
@@ -205,11 +189,7 @@ it("muestra el error si no cargan las comisiones, no «sin datos»", async () =>
 
 it("no revienta sin datos", async () => {
   jest.mocked(useResultadosPeriodo).mockReturnValue(datosDe([]));
-  jest
-    .mocked(useAdminOrders)
-    .mockReturnValue({ data: undefined, isLoading: false, isError: false } as unknown as ReturnType<
-      typeof useAdminOrders
-    >);
+  jest.mocked(useVentasServidor).mockReturnValue({ data: undefined, isLoading: false, isError: false, error: null });
   jest.mocked(getMarketplaceConfigs).mockResolvedValue([]);
   renderPagina();
   expect(screen.getByText("No hay ventas entregadas en este periodo")).toBeInTheDocument();

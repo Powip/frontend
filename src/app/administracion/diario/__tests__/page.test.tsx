@@ -2,9 +2,9 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
 import { formatSoles, formatSolesDecimales } from "@/features/panel-control/shared/utils/format";
 import type { EstadoPublicidad, PublicidadConectada } from "../../_lib/publicidad";
-import { calcularResultados, prorratearGastos } from "../../_lib/resultados";
+import { datosPeriodoDe } from "../../_lib/__tests__/servidor-fixtures";
 import { type DatosPeriodo, useAdminContexto, useResultadosPeriodo } from "../../_lib/useResultados";
-import { type PedidoAdmin, resumirVentas } from "../../_lib/ventas";
+import type { PedidoAdmin } from "../../_lib/ventas";
 import ControlDiarioPage from "../page";
 
 jest.mock("@/contexts/AdminPeriodContext", () => ({ useAdminPeriod: jest.fn() }));
@@ -28,16 +28,20 @@ const PEDIDOS: PedidoAdmin[] = [
     created_at: "2026-11-11T15:00:00Z",
     items: [{ quantity: 2 }, { quantity: 1, lineKind: "SERVICE" }],
   }),
-  // 22:00 del 11 en Lima (03:00 del 12 en UTC): cuenta el 11.
+  // 22:00 del 11 en Lima (03:00 del 12 en UTC): el servidor la cuenta el 11.
   venta({ id: "4", salesChannel: "WEB", grandTotal: 400, created_at: "2026-11-12T03:00:00Z", items: [{ quantity: 1 }] }),
   venta({ id: "5", salesChannel: "FALABELLA", grandTotal: 500, created_at: "2026-11-12T15:00:00Z", items: [{ quantity: 1 }] }),
   venta({ id: "6", status: "PENDIENTE", salesChannel: "WHATSAPP", grandTotal: 999, created_at: "2026-11-12T15:00:00Z" }),
 ];
 
 function armarDatos(
-  opciones: { pedidos?: PedidoAdmin[]; estado?: EstadoPublicidad; cargando?: boolean } = {},
+  opciones: {
+    pedidos?: PedidoAdmin[];
+    estado?: EstadoPublicidad;
+    cargando?: boolean;
+    entregasSinHistorial?: number;
+  } = {},
 ): DatosPeriodo {
-  const pedidos = opciones.pedidos ?? PEDIDOS;
   const estado = opciones.estado ?? "ok";
   const porDia = new Map(estado === "ok" ? [["2026-11-10", 50], ["2026-11-11", 100]] : []);
   const publicidad: PublicidadConectada = {
@@ -49,29 +53,11 @@ function armarDatos(
     provisional: false,
     otrasMonedas: [],
   };
-  const ventas = resumirVentas(pedidos);
-  const gastos = prorratearGastos([], DESDE, HASTA);
-  return {
-    desde: DESDE,
-    hasta: HASTA,
-    cargando: opciones.cargando ?? false,
-    error: null,
-    pedidos,
-    ventas,
-    gastos,
-    gastosCrudos: [],
-    merma: { unidades: 0, costo: 0 },
-    envios: 0,
+  return datosPeriodoDe(DESDE, HASTA, opciones.pedidos ?? PEDIDOS, {
     publicidad,
-    resultados: calcularResultados({
-      ventas,
-      gastos,
-      merma: 0,
-      envios: 0,
-      publicidadConectada: publicidad.monto,
-      igvPct: 18,
-    }),
-  };
+    cargando: opciones.cargando,
+    servidor: { calidad: { entregasSinHistorial: opciones.entregasSinHistorial ?? 0 } },
+  });
 }
 
 function preparar(opciones: Parameters<typeof armarDatos>[0] = {}) {
@@ -115,7 +101,7 @@ describe("Control diario", () => {
     expect(within(porCanal).getByText("Marketplace")).toBeInTheDocument();
   });
 
-  it("suma ventas y unidades reales por día de creación en Lima, con publicidad conectada y costo por venta", () => {
+  it("suma ventas y unidades reales por día de entrega en Lima, con publicidad conectada y costo por venta", () => {
     preparar();
     render(<ControlDiarioPage />);
 
@@ -181,6 +167,16 @@ describe("Control diario", () => {
     fireEvent.click(screen.getByRole("button", { name: "Guardar objetivo" }));
     expect(window.localStorage.getItem("powip:admin:objetivo-canal:c1:TIKTOK_LIVE")).toBe(JSON.stringify({ ventasDia: 50 }));
     expect(window.localStorage.getItem("powip:admin:objetivo-canal:c1:todos")).toBe(JSON.stringify({ ventasDia: 400 }));
+  });
+
+  it("dice que la venta cuenta el día de entrega y avisa las entregas sin historial", () => {
+    preparar({ entregasSinHistorial: 2 });
+    render(<ControlDiarioPage />);
+    expect(screen.getByText("Una venta es un pedido entregado y cuenta en el día en que se entregó.")).toBeInTheDocument();
+    expect(
+      screen.getByText("2 ventas no tienen registrado el día de entrega: se cuentan en el día en que se crearon."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/se creó:|a medida que se entregan/)).not.toBeInTheDocument();
   });
 
   it("no revienta sin datos ni mientras carga", () => {

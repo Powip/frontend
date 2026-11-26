@@ -3,15 +3,17 @@
 /**
  * Canales y marketplaces (FEAT-34).
  *
- * - Ventas por canal leídas de los pedidos (`ventasPorCanal`), con las grafías de un mismo canal agrupadas: ya no hay
- *   una lista fija de 7 canales (C3). Unidades = Σ quantity de las líneas de producto, no pedidos (C6).
+ * - Ventas por canal calculadas en ms-ventas (`porCanal`, por fecha de entrega, una fila por grafía) con las grafías de
+ *   un mismo canal agrupadas acá: ya no hay una lista fija de 7 canales (C3). Unidades = Σ quantity de las líneas de
+ *   producto, no pedidos (C6).
  * - Comisión = el `channelFee` que quedó guardado en cada pedido. ms-ventas lo calcula al registrar el pedido (y al
  *   editarle las líneas o el canal) con la configuración de abajo: `total × % ÷ 100 + cargo fijo`, solo si la
  *   configuración está activa y su canal es igual al `salesChannel` del pedido sin mirar mayúsculas. El fee de envío
  *   se guarda pero no se usa.
  * - Por eso al guardar se manda la grafía cruda más usada del canal, y se marcan las configuraciones que no coinciden
  *   con ningún pedido (en prod «MERCADO LIBRE» y «SHOPIFY», cuyos pedidos dicen «MERCADOLIBRE» y «WEB»). ms-company no
- *   deja cambiar el canal de una configuración: corregirla es crear la nueva y borrar la vieja.
+ *   deja cambiar el canal de una configuración: corregirla es crear la nueva y borrar la vieja. Las grafías salen de
+ *   las ventas entregadas de los últimos 90 días (`/administracion/resultados`).
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -36,8 +38,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
-import { useAdminOrders } from "@/hooks/useAdminQueries";
 import type { ICreateMarketplaceConfigDto, IMarketplaceConfig } from "@/interfaces/IAdmin";
+import type { AgregadoCanal } from "@/interfaces/IAdministracion";
 import { cn } from "@/lib/utils";
 import {
   AdminTable,
@@ -57,19 +59,17 @@ import {
   PanelSkeleton,
   SIN_DATO,
 } from "../_components/ui";
-import {
-  type CanalEnDatos,
-  canalesEnDatos,
-  claveCanal,
-  type GrupoCanal,
-  grupoCanal,
-  nombreCanal,
-} from "../_lib/canales";
+import { type CanalEnDatos, claveCanal, type GrupoCanal, grupoCanal, nombreCanal } from "../_lib/canales";
 import { sumarDias } from "../_lib/periodo";
-import { type DatosPeriodo, useAdminContexto, useResultadosPeriodo } from "../_lib/useResultados";
-import { type PedidoAdmin, ventasPorCanal } from "../_lib/ventas";
+import { canalesDelServidor, ventasPorCanalServidor } from "../_lib/servidor";
+import {
+  type DatosPeriodo,
+  useAdminContexto,
+  useResultadosPeriodo,
+  useVentasServidor,
+} from "../_lib/useResultados";
 
-/** Ventana para saber cómo llegan escritos los canales en los pedidos. */
+/** Ventana para saber cómo llegan escritos los canales en las ventas. */
 const DIAS_CANALES = 90;
 const STALE = 5 * 60 * 1000;
 const MAX_BARRAS = 7;
@@ -110,8 +110,8 @@ interface FilaCanal {
   participacion: number | null;
 }
 
-function filasDeCanales(pedidos: PedidoAdmin[]): FilaCanal[] {
-  const grupos = ventasPorCanal(pedidos);
+function filasDeCanales(porCanal: AgregadoCanal[]): FilaCanal[] {
+  const grupos = ventasPorCanalServidor(porCanal);
   const total = [...grupos.values()].reduce((s, r) => s + r.monto, 0);
   return [...grupos.entries()]
     .map(([clave, r]) => ({
@@ -176,7 +176,7 @@ const COLUMNAS_CANAL: ColumnaTabla<FilaCanal>[] = [
 ];
 
 function VentasPorCanal({ datos, onRetry }: { datos: DatosPeriodo; onRetry: () => void }) {
-  const filas = useMemo(() => filasDeCanales(datos.pedidos), [datos.pedidos]);
+  const filas = useMemo(() => filasDeCanales(datos.servidor.porCanal), [datos.servidor.porCanal]);
 
   if (datos.cargando) {
     return (
@@ -297,11 +297,11 @@ function VentasPorCanal({ datos, onRetry }: { datos: DatosPeriodo; onRetry: () =
 // ---- Configuración de comisiones ------------------------------------------------------------
 
 /** Pedidos por grafía (en mayúsculas, como compara ms-ventas). */
-function contarGrafias(pedidos: { salesChannel?: string | null }[]): Map<string, number> {
+function contarGrafias(porCanal: readonly { canal: string | null; pedidos: number }[]): Map<string, number> {
   const conteo = new Map<string, number>();
-  for (const pedido of pedidos) {
-    const grafia = (pedido.salesChannel ?? "").trim().toUpperCase();
-    if (grafia) conteo.set(grafia, (conteo.get(grafia) ?? 0) + 1);
+  for (const fila of porCanal) {
+    const grafia = (fila.canal ?? "").trim().toUpperCase();
+    if (grafia) conteo.set(grafia, (conteo.get(grafia) ?? 0) + fila.pedidos);
   }
   return conteo;
 }
@@ -434,7 +434,7 @@ function ValorConfig({ label, children }: { label: string; children: ReactNode }
 function ConfiguracionComisiones() {
   const { companyId, token, hoy } = useAdminContexto();
   const qc = useQueryClient();
-  const recientesQ = useAdminOrders(companyId, sumarDias(hoy, -(DIAS_CANALES - 1)), hoy);
+  const recientesQ = useVentasServidor(sumarDias(hoy, -(DIAS_CANALES - 1)), hoy);
   const configsQ = useQuery({
     queryKey: ["admin-marketplace-config", companyId],
     queryFn: () => getMarketplaceConfigs(companyId, token),
@@ -442,12 +442,12 @@ function ConfiguracionComisiones() {
     staleTime: STALE,
   });
 
-  const pedidos = recientesQ.data;
+  const porCanal = recientesQ.data?.porCanal;
   const canales = useMemo(
-    () => canalesEnDatos(pedidos ?? []).filter((c) => c.clave !== "SIN_CANAL" && c.grafias.length > 0),
-    [pedidos],
+    () => canalesDelServidor(porCanal ?? []).filter((c) => c.clave !== "SIN_CANAL" && c.grafias.length > 0),
+    [porCanal],
   );
-  const conteo = useMemo(() => contarGrafias(pedidos ?? []), [pedidos]);
+  const conteo = useMemo(() => contarGrafias(porCanal ?? []), [porCanal]);
   const configs = useMemo(() => configsQ.data ?? [], [configsQ.data]);
   const clavesConfiguradas = useMemo(() => new Set(configs.map((c) => claveCanal(c.channel))), [configs]);
   const grafiasConfiguradas = useMemo(
@@ -526,13 +526,14 @@ function ConfiguracionComisiones() {
   };
 
   const renderRevision = (config: IMarketplaceConfig) => {
-    if (!pedidos) return null;
+    if (!porCanal) return null;
     const revision = revisarGrafia(config, canales, conteo);
     switch (revision.tipo) {
       case "ok":
         return (
           <p className="mt-1.5 text-[11px] text-pc-ok">
-            Coincide con {formatNumber(revision.pedidos)} pedidos de los últimos {DIAS_CANALES} días.
+            Coincide con {formatNumber(revision.pedidos)}{" "}
+            {revision.pedidos === 1 ? "venta entregada" : "ventas entregadas"} en los últimos {DIAS_CANALES} días.
           </p>
         );
       case "parcial":
@@ -570,7 +571,7 @@ function ConfiguracionComisiones() {
       case "sin_pedidos":
         return (
           <p className="mt-1.5 text-[11px] text-pc-text-muted">
-            Sin pedidos de este canal en los últimos {DIAS_CANALES} días: no se puede comprobar si coincide.
+            Sin ventas entregadas de este canal en los últimos {DIAS_CANALES} días: no se puede comprobar si coincide.
           </p>
         );
     }
@@ -622,7 +623,7 @@ function ConfiguracionComisiones() {
                     const configurado = clavesConfiguradas.has(canal.clave);
                     return (
                       <option key={canal.clave} value={canal.clave} disabled={configurado}>
-                        {`${canal.nombre} · ${formatNumber(canal.pedidos)} pedidos${configurado ? " (ya tiene comisión)" : ""}`}
+                        {`${canal.nombre} · ${formatNumber(canal.pedidos)} ventas${configurado ? " (ya tiene comisión)" : ""}`}
                       </option>
                     );
                   })}
@@ -632,7 +633,7 @@ function ConfiguracionComisiones() {
             </div>
             {recientesQ.isError && (
               <p className="text-[11px] text-pc-bad">
-                No se pudieron leer los canales de tus pedidos. Reintenta más tarde.
+                No se pudieron leer los canales de tus ventas. Reintenta más tarde.
               </p>
             )}
             {canalNuevo && (
@@ -662,7 +663,7 @@ function ConfiguracionComisiones() {
 
         {marketplacesSinConfig.length > 0 && !nuevo && (
           <p className="text-xs text-pc-text-muted">
-            Hay pedidos de {marketplacesSinConfig.map((c) => c.nombre).join(", ")} sin comisión configurada.
+            Hay ventas de {marketplacesSinConfig.map((c) => c.nombre).join(", ")} sin comisión configurada.
           </p>
         )}
 
@@ -817,7 +818,7 @@ export default function CanalesPage() {
   const datos = useResultadosPeriodo(fromDate, toDate);
   const qc = useQueryClient();
   const reintentar = () => {
-    void qc.invalidateQueries({ queryKey: ["admin-orders"] });
+    void qc.invalidateQueries({ queryKey: ["admin-resultados"] });
   };
   return (
     <div className="space-y-3.5">

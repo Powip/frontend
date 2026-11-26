@@ -3,12 +3,15 @@
 /**
  * Margen por producto (FEAT-34 C5, M10).
  *
- * - Sale de las líneas de las ventas del periodo (`soloVentas`), sin servicios, agrupadas por SKU.
+ * - Sale de las líneas de las ventas del periodo (por fecha de entrega), agrupadas por SKU en ms-ventas
+ *   (`porProducto`), sin servicios.
  * - Precio promedio cobrado = Σ subtotal ÷ unidades. El subtotal de la línea ya incluye IGV (el 99,97 % de los pedidos
  *   es `taxMode = INCLUIDO`): ya no se le suma otro 18 %.
  * - Costo = `unitCost` de la línea (el costo al vender, pisado con el real al despachar). Antes se pedía el
- *   `priceBase` actual de cada variante al catálogo y se corregía a mano en el navegador. Igual que en
- *   `_lib/ventas.ts`, un costo vacío o en 0 cuenta como «sin costo»: la fila no inventa margen y se avisa.
+ *   `priceBase` actual de cada variante al catálogo y se corregía a mano en el navegador. Un costo vacío o en 0 cuenta
+ *   como «sin costo»: la fila no inventa margen y se avisa.
+ * - El aviso de costos usa los totales del periodo (los mismos de Resumen): una venta con alguna línea sin costo
+ *   cuenta entera como «sin costo».
  * - Las ventas de productos suman las líneas: no incluyen el envío ni los descuentos del pedido entero, así que no
  *   coinciden al sol con las Ventas del Resumen.
  */
@@ -16,6 +19,7 @@
 import { Search } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
+import type { ProductoVendido } from "@/interfaces/IAdministracion";
 import { cn } from "@/lib/utils";
 import {
   AdminTable,
@@ -32,12 +36,8 @@ import {
   PanelError,
   PanelSkeleton,
   SIN_DATO,
-  type CostoParaAviso,
 } from "../_components/ui";
 import { useResultadosPeriodo } from "../_lib/useResultados";
-import { costoDudosoLinea, type LineaPedido, num, type PedidoAdmin, soloVentas } from "../_lib/ventas";
-
-type Linea = LineaPedido & { attributes?: Record<string, unknown> | null };
 
 type EstadoCosto = "completo" | "parcial" | "sin_costo";
 
@@ -67,78 +67,34 @@ interface MargenPeriodo {
   costoTotal: number;
   margen: number;
   margenPct: number | null;
-  costo: CostoParaAviso;
+  /** Parte de lo vendido en productos (Σ subtotal) que tiene costo. */
+  coberturaLineas: number | null;
   skuSinCosto: number;
   skuParciales: number;
 }
 
-const varianteDe = (linea: Linea) =>
-  linea.attributes && typeof linea.attributes === "object"
-    ? Object.values(linea.attributes)
-        .filter((v) => typeof v === "string" && v.trim() !== "")
-        .join(" · ")
-    : "";
-
 /** Margen por SKU de las líneas de las ventas (pedidos entregados) del periodo. */
-function calcularMargen(pedidos: PedidoAdmin[]): MargenPeriodo {
-  const grupos = new Map<
-    string,
-    Omit<FilaProducto, "precioPromedio" | "costoUnitario" | "margen" | "margenPct" | "estadoCosto">
-  >();
-  const pedidosSinCosto = new Set<string>();
-  const pedidosDudosos = new Set<string>();
-  let sinCostoMonto = 0;
-  let dudosoMonto = 0;
-
-  soloVentas(pedidos).forEach((pedido, indice) => {
-    for (const linea of (pedido.items ?? []) as Linea[]) {
-      if (linea.lineKind === "SERVICE") continue;
-      const cantidad = num(linea.quantity);
-      if (cantidad <= 0) continue;
-      const sku = (linea.sku ?? "").trim();
-      const clave = sku || linea.productVariantId || (linea.productName ?? "").trim() || "sin-sku";
-      const fila = grupos.get(clave) ?? {
-        clave,
-        sku,
-        producto: (linea.productName ?? "").trim() || "Producto sin nombre",
-        variante: varianteDe(linea),
-        unidades: 0,
-        ventas: 0,
-        unidadesConCosto: 0,
-        ventasConCosto: 0,
-        costoTotal: 0,
-      };
-      const subtotal = num(linea.subtotal);
-      const costo = num(linea.unitCost);
-      fila.unidades += cantidad;
-      fila.ventas += subtotal;
-      if (costo > 0) {
-        fila.unidadesConCosto += cantidad;
-        fila.ventasConCosto += subtotal;
-        fila.costoTotal += costo * cantidad;
-        if (costoDudosoLinea(linea)) {
-          pedidosDudosos.add(pedido.id ?? `pedido-${indice}`);
-          dudosoMonto += subtotal;
-        }
-      } else {
-        pedidosSinCosto.add(pedido.id ?? `pedido-${indice}`);
-        sinCostoMonto += subtotal;
-      }
-      grupos.set(clave, fila);
-    }
-  });
-
-  const filas: FilaProducto[] = [...grupos.values()]
-    .map((g) => {
+function calcularMargen(productos: readonly ProductoVendido[]): MargenPeriodo {
+  const filas: FilaProducto[] = productos
+    .filter((p) => p.unidades > 0)
+    .map((p) => {
       const estadoCosto: EstadoCosto =
-        g.unidadesConCosto === 0 ? "sin_costo" : g.unidadesConCosto < g.unidades ? "parcial" : "completo";
-      const margen = estadoCosto === "sin_costo" ? null : g.ventasConCosto - g.costoTotal;
+        p.unidadesConCosto === 0 ? "sin_costo" : p.unidadesConCosto < p.unidades ? "parcial" : "completo";
+      const margen = estadoCosto === "sin_costo" ? null : p.ventasConCosto - p.costo;
       return {
-        ...g,
-        precioPromedio: g.unidades > 0 ? g.ventas / g.unidades : null,
-        costoUnitario: g.unidadesConCosto > 0 ? g.costoTotal / g.unidadesConCosto : null,
+        clave: p.clave,
+        sku: p.sku,
+        producto: p.producto,
+        variante: p.variante,
+        unidades: p.unidades,
+        ventas: p.ventas,
+        precioPromedio: p.ventas / p.unidades,
+        unidadesConCosto: p.unidadesConCosto,
+        ventasConCosto: p.ventasConCosto,
+        costoTotal: p.costo,
+        costoUnitario: p.unidadesConCosto > 0 ? p.costo / p.unidadesConCosto : null,
         margen,
-        margenPct: margen !== null && g.ventasConCosto !== 0 ? margen / g.ventasConCosto : null,
+        margenPct: margen !== null && p.ventasConCosto !== 0 ? margen / p.ventasConCosto : null,
         estadoCosto,
       };
     })
@@ -156,13 +112,7 @@ function calcularMargen(pedidos: PedidoAdmin[]): MargenPeriodo {
     costoTotal,
     margen,
     margenPct: ventasConCosto !== 0 ? margen / ventasConCosto : null,
-    costo: {
-      cobertura: ventas > 0 ? (ventas - sinCostoMonto) / ventas : null,
-      sinCostoPedidos: pedidosSinCosto.size,
-      sinCostoMonto,
-      dudosoPedidos: pedidosDudosos.size,
-      dudosoParte: ventas > 0 ? dudosoMonto / ventas : null,
-    },
+    coberturaLineas: ventas > 0 ? ventasConCosto / ventas : null,
     skuSinCosto: filas.filter((f) => f.estadoCosto === "sin_costo").length,
     skuParciales: filas.filter((f) => f.estadoCosto === "parcial").length,
   };
@@ -242,7 +192,7 @@ const COLUMNAS: ColumnaTabla<FilaProducto>[] = [
 export default function MargenProductoPage() {
   const { fromDate, toDate } = useAdminPeriod();
   const datos = useResultadosPeriodo(fromDate, toDate);
-  const margen = useMemo(() => calcularMargen(datos.pedidos), [datos.pedidos]);
+  const margen = useMemo(() => calcularMargen(datos.servidor.porProducto), [datos.servidor.porProducto]);
   const [busqueda, setBusqueda] = useState("");
   const busquedaId = useId();
 
@@ -290,12 +240,12 @@ export default function MargenProductoPage() {
         />
         <KpiCard
           label="Ventas con costo"
-          value={formatPercent(margen.costo.cobertura)}
-          sub={`${formatNumber(margen.skuSinCosto)} SKU sin costo · ${formatNumber(margen.skuParciales)} con costo parcial`}
+          value={formatPercent(margen.coberturaLineas)}
+          sub={`De lo vendido en productos · ${formatNumber(margen.skuSinCosto)} SKU sin costo · ${formatNumber(margen.skuParciales)} con costo parcial`}
         />
       </div>
 
-      <AvisoCostos costo={margen.costo} />
+      <AvisoCostos costo={datos.resultados.costo} />
       {margen.skuSinCosto > 0 && (
         <Aviso tono="info">
           Las filas «Sin costo» no muestran margen y no suman al margen bruto. Las que tienen costo solo en parte (por

@@ -7,7 +7,9 @@
  *   `resultados.utilidadOperativa` (antes la «GANANCIA» propia no restaba gastos fijos, merma ni comisiones).
  * - Proyección del mes solo con el mes en curso hasta hoy: ventas y utilidad al ritmo diario × días del mes. Con otro
  *   periodo se compara contra la meta repartida por días. Metas del año del periodo y sin valores por defecto.
- * - Cobros en calle: `usePedidosEnTransito` (con guía, en envío y despachados, últimos 90 días).
+ * - Ventas calculadas en ms-ventas, contadas el día en que se ENTREGARON (D1). Envíos = flete por pedido (D9).
+ * - Cobros en calle: `usePedidosEnTransito` (con guía, en envío y despachados, últimos 90 días), ya sumado por estado
+ *   y con los que llevan más de 30 días en la calle (`/administracion/en-transito`).
  * - Simulador sin doble conteo: gastos fijos sin publicidad, publicidad aparte, envío por pedido = envíos ÷ pedidos.
  * - Publicidad del módulo con días cerrados (`hastaAyer`) y una sola tarjeta de costo por venta. La inversión manual
  *   del navegador ya no se usa.
@@ -21,6 +23,7 @@ import { toast } from "sonner";
 import { AdvertisingBusinessMetricsPanel } from "@/components/advertising/AdvertisingBusinessMetricsPanel";
 import { ProgressBar } from "@/components/panel-control/charts/ProgressBar";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
+import { ESTADOS_EN_TRANSITO, type EstadoEnTransito } from "@/interfaces/IAdministracion";
 import { getCourierSettlements, settlementMoney } from "@/services/courierSettlementsService";
 import {
   Aviso,
@@ -34,6 +37,7 @@ import {
   formatSolesDecimales,
   KpiCard,
   type LineaCascada,
+  NotaSinHistorial,
   PanelCard,
   PanelError,
   PanelSkeleton,
@@ -54,16 +58,14 @@ import {
 } from "../_lib/periodo";
 import type { EstadoPublicidad } from "../_lib/publicidad";
 import type { Resultados } from "../_lib/resultados";
+import { type CoberturaFlete, notaFlete } from "../_lib/servidor";
 import { useAdminContexto, usePedidosEnTransito, useResultadosPeriodo } from "../_lib/useResultados";
-import { diaVenta, ESTADOS_EN_TRANSITO, type PedidoAdmin, saldoPedido } from "../_lib/ventas";
 
 const STALE = 5 * 60 * 1000;
 const RUTA_METAS = "/administracion/anual";
 const RUTA_PUBLICIDAD = "/administracion/pauta";
 const RUTA_GASTOS = "/administracion/gastos";
 const RUTA_LIQUIDACIONES = "/operaciones/liquidaciones";
-/** Un pedido en calle hace más de esto probablemente quedó sin cerrar. */
-const DIAS_EN_CALLE_ALERTA = 30;
 
 // ---- Cuentas de la página ---------------------------------------------------------------------
 
@@ -154,7 +156,8 @@ function simular(r: Resultados, s: Supuestos): Simulacion | null {
   };
 }
 
-function lineasReporte(r: Resultados): LineaCascada[] {
+function lineasReporte(r: Resultados, flete: CoberturaFlete): LineaCascada[] {
+  const nota = notaFlete(flete);
   const lineas: LineaCascada[] = [
     { clave: "ventas", etiqueta: "Ventas", monto: r.ventas, signo: "+" },
     { clave: "sin_igv", etiqueta: "Ventas sin IGV", monto: r.ventasSinIgv, signo: "=", informativa: true },
@@ -172,7 +175,14 @@ function lineasReporte(r: Resultados): LineaCascada[] {
   if (r.merma > 0) lineas.push({ clave: "merma", etiqueta: "Merma", monto: r.merma, signo: "−" });
   lineas.push(
     { clave: "comisiones", etiqueta: "Comisiones de canal", monto: r.comisiones, signo: "−" },
-    { clave: "envios", etiqueta: "Envíos", monto: r.envios, signo: "−" },
+    {
+      clave: "envios",
+      etiqueta: "Envíos (flete por pedido)",
+      monto: r.envios,
+      signo: "−",
+      nota: nota?.texto,
+      notaTono: nota?.baja ? "aviso" : "info",
+    },
     {
       clave: "publicidad",
       etiqueta: "Publicidad",
@@ -186,14 +196,14 @@ function lineasReporte(r: Resultados): LineaCascada[] {
   return lineas;
 }
 
-function textoParaCompartir(r: Resultados, etiqueta: string): string {
+function textoParaCompartir(r: Resultados, etiqueta: string, flete: CoberturaFlete): string {
   const filas = [
     `Reporte ${etiqueta}`,
     "",
     `Ventas: ${formatSoles(r.ventas)} (${formatNumber(r.pedidos)} pedidos, ${formatNumber(r.unidades)} unidades)`,
     `Costo de producto: ${formatSoles(r.costoProducto)}`,
     `Comisiones de canal: ${formatSoles(r.comisiones)}`,
-    `Envíos: ${formatSoles(r.envios)}`,
+    `Envíos (flete por pedido): ${formatSoles(r.envios)}`,
     `Publicidad: ${formatSoles(r.publicidad.total)}`,
     `Gastos fijos: ${formatSoles(r.gastosFijos)}`,
     `Utilidad operativa: ${formatSoles(r.utilidadOperativa)} (margen ${formatPercent(r.margenOperativo)})`,
@@ -202,27 +212,17 @@ function textoParaCompartir(r: Resultados, etiqueta: string): string {
   if (r.costo.sinCostoPedidos > 0) {
     filas.push("", `Ojo: ${formatNumber(r.costo.sinCostoPedidos)} ventas sin costo cargado, la utilidad está sobreestimada.`);
   }
+  const nota = notaFlete(flete);
+  if (nota?.baja) filas.push(`Ojo: ${nota.texto}.`);
   filas.push("", "— vía Powip");
   return filas.join("\n");
 }
 
-const NOMBRE_ESTADO_TRANSITO: Record<(typeof ESTADOS_EN_TRANSITO)[number], string> = {
+const NOMBRE_ESTADO_TRANSITO: Record<EstadoEnTransito, string> = {
   ASIGNADO_A_GUIA: "Con guía asignada",
   EN_ENVIO: "En envío",
   DESPACHADO: "Despachado",
 };
-
-function resumirTransito(pedidos: PedidoAdmin[], hoy: DiaKey) {
-  const porEstado = ESTADOS_EN_TRANSITO.map((estado) => {
-    const lista = pedidos.filter((p) => p.status === estado);
-    return { estado, pedidos: lista.length, saldo: lista.reduce((s, p) => s + saldoPedido(p), 0) };
-  });
-  const antiguos = pedidos.filter((p) => {
-    const dia = diaVenta(p);
-    return !!dia && diasEntre(dia, hoy) > DIAS_EN_CALLE_ALERTA;
-  });
-  return { porEstado, antiguos: antiguos.length, saldoAntiguos: antiguos.reduce((s, p) => s + saldoPedido(p), 0) };
-}
 
 const MENSAJE_PUBLICIDAD: Partial<Record<EstadoPublicidad, string>> = {
   sin_permiso: "No tienes permiso para ver la publicidad de la empresa.",
@@ -332,8 +332,8 @@ export default function ReporteRapidoPage() {
   const r = datos.resultados;
   const etiqueta = etiquetaPeriodo(fromDate, toDate);
   const proyeccion = proyectarMes(r, fromDate, toDate, hoy);
+  const notaEnvios = notaFlete(datos.flete);
   const sim = useMemo(() => simular(r, supuestos), [r, supuestos]);
-  const resumenTransito = useMemo(() => resumirTransito(transito.pedidos, hoy), [transito.pedidos, hoy]);
   const balancesCourier = useMemo(
     () => courierSettlementBalances(settlementsQ.data?.collections ?? []),
     [settlementsQ.data],
@@ -343,7 +343,7 @@ export default function ReporteRapidoPage() {
 
   const copiar = async () => {
     try {
-      await navigator.clipboard.writeText(textoParaCompartir(r, etiqueta));
+      await navigator.clipboard.writeText(textoParaCompartir(r, etiqueta, datos.flete));
       toast.success("Reporte copiado: pégalo en WhatsApp");
     } catch {
       toast.error("No se pudo copiar el reporte");
@@ -422,18 +422,20 @@ export default function ReporteRapidoPage() {
       ),
     });
   }
-  if (resumenTransito.antiguos > 0) {
+  const antiguos = transito.antiguos;
+  if (!transito.cargando && !transito.error && antiguos.pedidos > 0) {
     alertas.push({
       clave: "transito-antiguo",
       tono: "info",
-      titulo: `${formatNumber(resumenTransito.antiguos)} ${resumenTransito.antiguos === 1 ? "pedido sigue" : "pedidos siguen"} en calle después de ${DIAS_EN_CALLE_ALERTA} días`,
-      texto: `${formatSoles(resumenTransito.saldoAntiguos)} por cobrar. Revisa si se entregaron o se devolvieron y actualiza su estado.`,
+      titulo: `${formatNumber(antiguos.pedidos)} ${antiguos.pedidos === 1 ? "pedido sigue" : "pedidos siguen"} en calle después de ${antiguos.dias} días`,
+      texto: `${formatSoles(antiguos.saldo)} por cobrar. Revisa si se entregaron o se devolvieron y actualiza su estado.`,
     });
   }
 
   return (
     <div className="space-y-3.5">
       {!datos.cargando && <AvisoCostos costo={r.costo} />}
+      {!datos.cargando && <NotaSinHistorial cantidad={datos.servidor.calidad.entregasSinHistorial} />}
 
       {datos.cargando ? (
         <PanelSkeleton variant="kpis" label="resultados del periodo" />
@@ -462,7 +464,11 @@ export default function ReporteRapidoPage() {
             label="Envíos"
             value={formatSoles(r.envios)}
             sub={
-              r.pedidos > 0 ? `${formatSolesDecimales(r.envios / r.pedidos)} por pedido` : "Cotización del courier"
+              <span className={notaEnvios?.baja ? "text-pc-warn" : undefined}>
+                {datos.flete.entregas > 0
+                  ? `Flete por pedido · conocido en ${formatNumber(datos.flete.conFlete)} de ${formatNumber(datos.flete.entregas)} entregas`
+                  : "Flete por pedido"}
+              </span>
             }
           />
           <KpiCard label="Gastos fijos" value={formatSoles(r.gastosFijos)} sub="Del mes, repartidos por días" />
@@ -487,7 +493,7 @@ export default function ReporteRapidoPage() {
           {datos.cargando ? (
             <PanelSkeleton variant="tabla" label="reporte del periodo" />
           ) : (
-            <TablaCascada lineas={lineasReporte(r)} base={r.ventas} caption={`Reporte de ${etiqueta}`} />
+            <TablaCascada lineas={lineasReporte(r, datos.flete)} base={r.ventas} caption={`Reporte de ${etiqueta}`} />
           )}
         </PanelCard>
 
@@ -649,14 +655,14 @@ export default function ReporteRapidoPage() {
               <div className="space-y-3">
                 <dl className="grid grid-cols-2 gap-3">
                   <Dato label="Saldo por cobrar" valor={formatSoles(transito.saldo)} />
-                  <Dato label="Pedidos en calle" valor={formatNumber(transito.pedidos.length)} />
+                  <Dato label="Pedidos en calle" valor={formatNumber(transito.pedidos)} />
                 </dl>
                 <ul className="space-y-1 text-xs" aria-label="Pedidos en calle por estado">
-                  {resumenTransito.porEstado.map((fila) => (
-                    <li key={fila.estado} className="flex justify-between gap-2 border-t border-pc-border-soft pt-1">
-                      <span className="text-pc-text-muted">{NOMBRE_ESTADO_TRANSITO[fila.estado]}</span>
+                  {ESTADOS_EN_TRANSITO.map((estado) => (
+                    <li key={estado} className="flex justify-between gap-2 border-t border-pc-border-soft pt-1">
+                      <span className="text-pc-text-muted">{NOMBRE_ESTADO_TRANSITO[estado]}</span>
                       <span className="tabular-nums text-pc-text">
-                        {formatNumber(fila.pedidos)} · {formatSoles(fila.saldo)}
+                        {formatNumber(transito.porEstado[estado].pedidos)} · {formatSoles(transito.porEstado[estado].saldo)}
                       </span>
                     </li>
                   ))}

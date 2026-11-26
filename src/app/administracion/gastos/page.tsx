@@ -61,6 +61,7 @@ import {
   partes,
 } from "../_lib/periodo";
 import { CATEGORIAS_FIJAS, NOMBRE_CATEGORIA, prorratearGastos } from "../_lib/resultados";
+import { notaFlete } from "../_lib/servidor";
 import { type DatosPeriodo, useAdminContexto, useResultadosPeriodo } from "../_lib/useResultados";
 
 const CATEGORIAS_FORM: CategoriaGasto[] = [...CATEGORIAS_FIJAS, "PUBLICIDAD", "INVERSION"];
@@ -755,6 +756,7 @@ function CostosDelPeriodo({ datos }: { datos: DatosPeriodo }) {
   if (datos.cargando || datos.error) return null;
   const r = datos.resultados;
   const total = r.ventas - r.utilidadOperativa;
+  const nota = notaFlete(datos.flete);
   const lineas: LineaCascada[] = [
     {
       clave: "costo",
@@ -768,7 +770,14 @@ function CostosDelPeriodo({ datos }: { datos: DatosPeriodo }) {
     },
     { clave: "merma", etiqueta: "Merma", monto: r.merma, signo: "+" },
     { clave: "comisiones", etiqueta: "Comisiones de canal", monto: r.comisiones, signo: "+" },
-    { clave: "envios", etiqueta: "Envíos (courier)", monto: r.envios, signo: "+" },
+    {
+      clave: "envios",
+      etiqueta: "Envíos (flete por pedido)",
+      monto: r.envios,
+      signo: "+",
+      nota: nota?.texto,
+      notaTono: nota?.baja ? "aviso" : "info",
+    },
     { clave: "publicidad", etiqueta: "Publicidad", monto: r.publicidad.total, signo: "+" },
     { clave: "fijos", etiqueta: "Gastos fijos (repartidos por días)", monto: r.gastosFijos, signo: "+" },
     { clave: "total", etiqueta: "Total de costos y gastos", monto: total, signo: "=", total: true },

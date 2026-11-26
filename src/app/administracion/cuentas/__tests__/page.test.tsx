@@ -19,12 +19,30 @@ jest.mock("@/services/courierSettlementsService", () => ({
 }));
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 
-const PEDIDOS = [
-  { id: "1", courier: "Shalom", grandTotal: 100, payments: [], status: "EN_ENVIO" },
-  { id: "2", courier: " SHALOM ", grandTotal: 50, payments: [{ status: "PAID", amount: 20 }], status: "DESPACHADO" },
-  { id: "3", courier: "Olva", grandTotal: 80, payments: [{ status: "PAID", amount: 80 }], status: "ASIGNADO_A_GUIA" },
-  { id: "4", courier: null, grandTotal: 40, payments: [], status: "EN_ENVIO" },
+/** Por courier tal como llega de ms-ventas: una fila por grafía. */
+const POR_COURIER = [
+  { courier: "Shalom", pedidos: 1, saldo: 100, conSaldo: 1 },
+  { courier: "SHALOM", pedidos: 1, saldo: 30, conSaldo: 1 },
+  { courier: "Olva", pedidos: 1, saldo: 0, conSaldo: 0 },
+  { courier: null, pedidos: 1, saldo: 40, conSaldo: 1 },
 ];
+
+const transito = (extra = {}) => ({
+  cargando: false,
+  error: null,
+  desde: "2026-08-29",
+  hasta: "2026-11-26",
+  pedidos: 4,
+  saldo: 170,
+  porEstado: {
+    ASIGNADO_A_GUIA: { pedidos: 1, saldo: 0 },
+    EN_ENVIO: { pedidos: 2, saldo: 140 },
+    DESPACHADO: { pedidos: 1, saldo: 30 },
+  },
+  porCourier: POR_COURIER,
+  antiguos: { dias: 30, pedidos: 0, saldo: 0 },
+  ...extra,
+});
 
 const coleccion = (courierName: string, currency: string, remainingAmount: number, reservedAmount = 0) => ({
   id: `${courierName}-${currency}`,
@@ -47,14 +65,7 @@ function renderPage() {
 
 beforeEach(() => {
   window.localStorage.clear();
-  mockTransito.mockReturnValue({
-    cargando: false,
-    error: null,
-    pedidos: PEDIDOS,
-    saldo: 170,
-    desde: "2026-08-29",
-    hasta: "2026-11-26",
-  });
+  mockTransito.mockReturnValue(transito());
   mockSettlements.mockResolvedValue({
     collections: [coleccion("Shalom", "PEN", 300, 50), coleccion("Shalom", "USD", 10)],
   });
@@ -107,7 +118,7 @@ describe("Cuentas por cobrar y pagar", () => {
   });
 
   it("no revienta sin datos ni si falla la consulta del courier", async () => {
-    mockTransito.mockReturnValue({ cargando: false, error: null, pedidos: [], saldo: 0, desde: "", hasta: "" });
+    mockTransito.mockReturnValue(transito({ pedidos: 0, saldo: 0, porCourier: [] }));
     mockSettlements.mockRejectedValue(new Error("caído"));
     renderPage();
     expect(screen.getByText("No hay pedidos en tránsito")).toBeInTheDocument();

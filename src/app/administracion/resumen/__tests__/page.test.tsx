@@ -9,9 +9,9 @@ import {
 import type { IGastoOperativo } from "@/interfaces/IAdmin";
 import type { MetasAnuales } from "../../_lib/metasStorage";
 import type { PublicidadConectada } from "../../_lib/publicidad";
-import { calcularResultados, prorratearGastos } from "../../_lib/resultados";
+import { datosPeriodoDe } from "../../_lib/__tests__/servidor-fixtures";
 import type { DatosPeriodo } from "../../_lib/useResultados";
-import { type PedidoAdmin, resumirVentas } from "../../_lib/ventas";
+import type { PedidoAdmin } from "../../_lib/ventas";
 import ResumenAdminPage from "../page";
 
 jest.mock("next/link", () => ({
@@ -82,37 +82,17 @@ function datos(
     gastos?: IGastoOperativo[];
     merma?: number;
     envios?: number;
+    fleteConocido?: number;
     publicidad?: PublicidadConectada;
     cargando?: boolean;
+    entregasSinHistorial?: number;
   } = {},
 ): DatosPeriodo {
-  const gastosCrudos = opciones.gastos ?? [];
-  const ventas = resumirVentas(pedidos);
-  const gastos = prorratearGastos(gastosCrudos, desde, hasta);
-  const publicidad = opciones.publicidad ?? publicidadOk(0, { estado: "sin_cuentas" });
-  const merma = opciones.merma ?? 0;
-  const envios = opciones.envios ?? 0;
-  return {
-    desde,
-    hasta,
-    cargando: opciones.cargando ?? false,
-    error: null,
-    pedidos,
-    ventas,
-    gastos,
-    gastosCrudos,
-    merma: { unidades: 0, costo: merma },
-    envios,
-    publicidad,
-    resultados: calcularResultados({
-      ventas,
-      gastos,
-      merma,
-      envios,
-      publicidadConectada: publicidad.monto,
-      igvPct: 18,
-    }),
-  };
+  return datosPeriodoDe(desde, hasta, pedidos, {
+    ...opciones,
+    publicidad: opciones.publicidad ?? publicidadOk(0, { estado: "sin_cuentas" }),
+    servidor: { calidad: { entregasSinHistorial: opciones.entregasSinHistorial ?? 0 } },
+  });
 }
 
 const NOV = "2026-11-10T15:00:00Z";
@@ -293,6 +273,32 @@ describe("Resumen de Administración", () => {
     const adelantos = seccion("Adelantos de pedidos aún no entregados");
     expect(within(adelantos).getByText(formatSoles(100))).toBeInTheDocument();
     expect(within(adelantos).getByText(/^1 pedido ·/)).toBeInTheDocument();
+  });
+
+  it("los envíos son el flete por pedido, con su cobertura y la nota de las entregas sin historial", () => {
+    mockComparados.mockReturnValue({
+      actual: datos("2026-11-01", "2026-11-30", pedidosNoviembre, {
+        envios: 30,
+        fleteConocido: 1,
+        entregasSinHistorial: 1,
+      }),
+      anterior: datos("2026-10-01", "2026-10-31", pedidosOctubre),
+      rangoAnterior: { desde: "2026-10-01", hasta: "2026-10-31" },
+    });
+    renderPagina();
+    const tabla = screen.getByRole("table", { name: "Estado de resultados del periodo" });
+    const envios = within(tabla)
+      .getByRole("rowheader", { name: /Envíos \(flete por pedido\)/ })
+      .closest("tr") as HTMLElement;
+    expect(within(envios).getByText(formatSoles(30))).toBeInTheDocument();
+    // 1 de 2 entregas con flete: el resultado está sobreestimado.
+    expect(
+      within(envios).getByText(/Flete conocido en 1 de 2 entregas: el resto no suma envío/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Shalom/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText("1 venta no tiene registrado el día de entrega: se cuenta en el día en que se creó."),
+    ).toBeInTheDocument();
   });
 
   it("pinta el semáforo con publicidad de una sola fuente", () => {

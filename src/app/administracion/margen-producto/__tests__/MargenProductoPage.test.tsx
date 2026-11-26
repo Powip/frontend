@@ -4,10 +4,9 @@ import {
   formatSoles,
   formatSolesDecimales,
 } from "@/features/panel-control/shared/utils/format";
-import type { PublicidadConectada } from "../../_lib/publicidad";
-import { calcularResultados, prorratearGastos } from "../../_lib/resultados";
+import { datosPeriodoDe } from "../../_lib/__tests__/servidor-fixtures";
 import { type DatosPeriodo, useResultadosPeriodo } from "../../_lib/useResultados";
-import { type PedidoAdmin, resumirVentas } from "../../_lib/ventas";
+import type { PedidoAdmin } from "../../_lib/ventas";
 import MargenProductoPage from "../page";
 
 jest.mock("@/contexts/AdminPeriodContext", () => ({
@@ -19,32 +18,7 @@ const DESDE = "2026-11-01";
 const HASTA = "2026-11-26";
 
 function datosDe(pedidos: PedidoAdmin[], extra: Partial<DatosPeriodo> = {}): DatosPeriodo {
-  const ventas = resumirVentas(pedidos);
-  const gastos = prorratearGastos([], DESDE, HASTA);
-  const publicidad: PublicidadConectada = {
-    estado: "sin_cuentas",
-    monto: 0,
-    porDia: new Map(),
-    cobertura: null,
-    diasFaltantes: 0,
-    provisional: false,
-    otrasMonedas: [],
-  };
-  return {
-    desde: DESDE,
-    hasta: HASTA,
-    cargando: false,
-    error: null,
-    pedidos,
-    ventas,
-    gastos,
-    gastosCrudos: [],
-    merma: { unidades: 0, costo: 0 },
-    envios: 0,
-    publicidad,
-    resultados: calcularResultados({ ventas, gastos, merma: 0, envios: 0, publicidadConectada: 0, igvPct: 18 }),
-    ...extra,
-  };
+  return { ...datosPeriodoDe(DESDE, HASTA, pedidos), ...extra };
 }
 
 type LineaPrueba = NonNullable<PedidoAdmin["items"]>[number] & { attributes?: Record<string, string> };
@@ -120,10 +94,15 @@ it("calcula precio cobrado (sin ×1,18), costo de la línea y margen por SKU", (
   expect(global.fetch).not.toHaveBeenCalled();
 });
 
-it("avisa las ventas sin costo con su parte de lo vendido", () => {
+it("avisa las ventas sin costo con los totales del periodo (la venta con una línea sin costo cuenta entera)", () => {
   render(<MargenProductoPage />);
+  // v1 (S/ 170) tiene el short sin costo: cuenta entera como «sin costo», igual que en Resumen.
   expect(
-    screen.getByText(`1 venta no tiene costo cargado (${formatPercent(50 / 210)} de lo vendido, ${formatSoles(50)})`),
+    screen.getByText(`1 venta no tiene costo cargado (${formatPercent(170 / 230)} de lo vendido, ${formatSoles(170)})`),
+  ).toBeInTheDocument();
+  // El KPI mide las líneas: 160 de los 210 vendidos en productos tienen costo.
+  expect(
+    within(screen.getByRole("region", { name: "Ventas con costo" })).getByText(formatPercent(160 / 210)),
   ).toBeInTheDocument();
 });
 

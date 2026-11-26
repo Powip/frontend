@@ -25,6 +25,7 @@ import {
   formatSoles,
   formatVeces,
   KpiCard,
+  NotaFlete,
   PanelCard,
   PanelError,
   PanelSkeleton,
@@ -32,6 +33,7 @@ import {
   SubTitulo,
 } from "../_components/ui";
 import { CATEGORIAS_FIJAS, NOMBRE_CATEGORIA, type Resultados } from "../_lib/resultados";
+import { notaFlete } from "../_lib/servidor";
 import { useResultadosPeriodo } from "../_lib/useResultados";
 
 // ---- Fijos y variables ------------------------------------------------------------------------
@@ -296,7 +298,7 @@ export default function EquilibrioPage() {
     { clave: "costo", etiqueta: "Costo de producto", monto: r.costoProducto },
     { clave: "merma", etiqueta: "Merma", monto: r.merma },
     { clave: "comisiones", etiqueta: "Comisiones de canal", monto: r.comisiones },
-    { clave: "envios", etiqueta: "Envíos", monto: r.envios },
+    { clave: "envios", etiqueta: "Envíos (flete por pedido)", monto: r.envios },
     { clave: "publicidad", etiqueta: "Publicidad", monto: r.publicidad.total },
   ];
   const fijos: FilaCosto[] = CATEGORIAS_FIJAS.map((categoria) => ({
@@ -374,6 +376,7 @@ export default function EquilibrioPage() {
                 }}
                 ventas={r.ventas}
               />
+              <NotaFlete nota={notaFlete(datos.flete)} />
             </div>
             <div className="min-w-0 space-y-1.5">
               <SubTitulo>Gastos fijos</SubTitulo>

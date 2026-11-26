@@ -7,9 +7,10 @@
  * la publicidad cargada en Gastos (la restaba de los gastos y sumaba la «inversión manual» del navegador).
  *
  * Ahora, mes a mes del año del periodo elegido (`useResultadosAnuales`):
- * - Entradas = ventas entregadas del mes (como si se cobraran ese mismo mes).
+ * - Entradas = ventas entregadas en el mes (por día de entrega; como si se cobraran ese mismo mes).
  * - Salidas = compra de mercadería (Gastos › categoría INVERSION del mes) + gastos fijos + publicidad
- *   (`resultados.publicidad.total`: cuentas conectadas + Gastos › Publicidad) + envíos + comisiones de canal.
+ *   (`resultados.publicidad.total`: cuentas conectadas + Gastos › Publicidad) + envíos (flete por pedido, D9) +
+ *   comisiones de canal.
  * - No se resta el costo de producto: la compra de mercadería ya es esa salida (sería contarla dos veces).
  * - No incluye adelantos, lo que el courier todavía no liquidó, préstamos ni impuestos.
  */
@@ -26,6 +27,7 @@ import {
   type ColumnaTabla,
   formatSoles,
   KpiCard,
+  NotaFlete,
   PanelCard,
   PanelError,
   PanelSkeleton,
@@ -33,6 +35,7 @@ import {
 } from "../_components/ui";
 import { diasDelMes, diasEntre, etiquetaPeriodo, MESES_CORTOS, MESES_LARGOS, partes } from "../_lib/periodo";
 import type { EstadoPublicidad } from "../_lib/publicidad";
+import { notaFlete } from "../_lib/servidor";
 import { type ResultadoMes, useAdminContexto, useResultadosAnuales } from "../_lib/useResultados";
 
 interface FilaFlujo {
@@ -150,9 +153,10 @@ export default function FlujoDeCajaPage() {
   const nota = (
     <Aviso tono="info" titulo="Flujo de caja estimado">
       <p>
-        <b>Entradas</b>: las ventas entregadas de cada mes, como si se cobraran ese mismo mes. <b>Salidas</b>: la compra
-        de mercadería, los gastos fijos y la publicidad cargados en Gastos (más el consumo de las cuentas de publicidad
-        conectadas), los envíos y las comisiones de canal. El mes en curso se mide hasta hoy.
+        <b>Entradas</b>: las ventas entregadas en cada mes, como si se cobraran ese mismo mes. <b>Salidas</b>: la
+        compra de mercadería, los gastos fijos y la publicidad cargados en Gastos (más el consumo de las cuentas de
+        publicidad conectadas), los envíos (flete por pedido) y las comisiones de canal. El mes en curso se mide hasta
+        hoy.
       </p>
       <p className="mt-1">
         No se resta el costo de lo vendido: la compra de mercadería ya es esa salida y sería contarla dos veces. No
@@ -314,6 +318,7 @@ export default function FlujoDeCajaPage() {
             acumulado: soles(totales.neto, true),
           }}
         />
+        <NotaFlete nota={notaFlete(datos.flete)} className="mt-2" />
       </PanelCard>
     </div>
   );

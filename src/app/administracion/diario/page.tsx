@@ -3,10 +3,11 @@
 /**
  * Control diario (Administración › Ventas) — FEAT-34.
  *
- * - Ventas por día de creación en hora Lima (`ventasPorDia`), con la definición única de venta y unidades reales
- *   (Σ cantidades sin servicios). Antes el día salía de la última edición del pedido (C2) y se contaban líneas (C6).
- * - Canales leídos de los datos (`canalesEnDatos`, grafías agrupadas) más «Todos los canales». Antes solo había 7
- *   canales fijos y el 44 % de lo vendido (Web, TikTok, Falabella, Live…) no aparecía (C3).
+ * - Ventas por día de ENTREGA en hora Lima (D1), calculadas en ms-ventas (`porDia` y, por canal, `porDiaCanal`), con
+ *   la definición única de venta y unidades reales (Σ cantidades sin servicios). Antes el día salía de la última
+ *   edición del pedido (C2) y se contaban líneas (C6).
+ * - Canales leídos de los datos (`porCanal` con las grafías agrupadas, `canalesDelServidor`) más «Todos los canales».
+ *   Antes solo había 7 canales fijos y el 44 % de lo vendido (Web, TikTok, Falabella, Live…) no aparecía (C3).
  * - Publicidad por día: consumo de las cuentas conectadas (`datos.publicidad.porDia`). La inversión manual del
  *   navegador ya no se usa (C8). El consumo no viene por canal: solo se muestra en «Todos los canales».
  * - Objetivo diario por canal: guardado en el navegador (`objetivoStorage`), con la clave de canal normalizada.
@@ -33,12 +34,13 @@ import {
   formatSoles,
   formatSolesDecimales,
   KpiCard,
+  NotaSinHistorial,
   PanelCard,
   PanelError,
   PanelSkeleton,
   SIN_DATO,
 } from "../_components/ui";
-import { type CanalEnDatos, canalDePedido, canalesEnDatos, grupoCanal, nombreCanal } from "../_lib/canales";
+import { type CanalEnDatos, grupoCanal, nombreCanal } from "../_lib/canales";
 import {
   avanceObjetivo,
   hayObjetivo,
@@ -49,8 +51,16 @@ import {
 } from "../_lib/objetivoStorage";
 import { type DiaKey, diasEntre, MESES_CORTOS, minDia, partes, sumarDias } from "../_lib/periodo";
 import type { EstadoPublicidad } from "../_lib/publicidad";
+import {
+  agregadosPorCanal,
+  agregadoVacio,
+  canalesDelServidor,
+  resumenDeAgregado,
+  serieDiaria,
+  serieDiariaCanal,
+} from "../_lib/servidor";
 import { useAdminContexto, useResultadosPeriodo } from "../_lib/useResultados";
-import { type ResumenVentas, resumirVentas, soloVentas, ventasPorCanal, ventasPorDia } from "../_lib/ventas";
+import type { ResumenVentas } from "../_lib/ventas";
 
 /** Hasta esta cantidad de días el gráfico va en barras; con más, en línea. */
 const MAX_DIAS_BARRAS = 62;
@@ -100,7 +110,9 @@ export default function ControlDiarioPage() {
   const [editando, setEditando] = useState(false);
   const [borrador, setBorrador] = useState("");
 
-  const canales = useMemo<CanalEnDatos[]>(() => canalesEnDatos(soloVentas(datos.pedidos)), [datos.pedidos]);
+  const servidor = datos.servidor;
+  const canales = useMemo<CanalEnDatos[]>(() => canalesDelServidor(servidor.porCanal), [servidor.porCanal]);
+  const porCanal = useMemo(() => agregadosPorCanal(servidor.porCanal), [servidor.porCanal]);
   const canal =
     canalElegido === TODOS_LOS_CANALES || canales.some((c) => c.clave === canalElegido)
       ? canalElegido
@@ -111,18 +123,20 @@ export default function ControlDiarioPage() {
 
   const hastaVisible = minDia(toDate, hoy);
   const dias = useMemo(() => diasDelRango(fromDate, hastaVisible), [fromDate, hastaVisible]);
-  const pedidosVista = useMemo(
-    () => (esTodos ? datos.pedidos : datos.pedidos.filter((p) => canalDePedido(p) === canal)),
-    [datos.pedidos, esTodos, canal],
+  const resumen = useMemo(
+    () => (esTodos ? datos.ventas : resumenDeAgregado(porCanal.get(canal) ?? agregadoVacio())),
+    [esTodos, datos.ventas, porCanal, canal],
   );
-  const resumen = useMemo(() => resumirVentas(pedidosVista), [pedidosVista]);
+  const serie = useMemo(
+    () => (esTodos ? serieDiaria(servidor.porDia) : serieDiariaCanal(servidor.porDiaCanal, canal)),
+    [esTodos, servidor.porDia, servidor.porDiaCanal, canal],
+  );
   const publicidad = datos.publicidad;
   const conPublicidad = esTodos && publicidad.estado === "ok";
 
   const filas = useMemo<FilaDia[]>(() => {
-    const porDia = ventasPorDia(pedidosVista);
     return dias.map((dia) => {
-      const r = porDia.get(dia);
+      const r = serie.get(dia);
       const pedidos = r?.pedidos ?? 0;
       const ventas = r?.monto ?? 0;
       const pub = conPublicidad ? (publicidad.porDia.get(dia) ?? 0) : null;
@@ -138,16 +152,21 @@ export default function ControlDiarioPage() {
         avance: avanceObjetivo(ventas, obj),
       };
     });
-  }, [pedidosVista, dias, conPublicidad, publicidad.porDia, objetivo]);
+  }, [serie, dias, conPublicidad, publicidad.porDia, objetivo]);
 
-  const filasCanal = useMemo<FilaCanal[]>(() => {
-    const porCanal = ventasPorCanal(datos.pedidos);
-    return canales
-      .map((c) => ({ clave: c.clave, nombre: c.nombre, grafias: c.grafias, resumen: porCanal.get(c.clave) }))
-      .filter((f): f is FilaCanal => !!f.resumen)
-      .sort((a, b) => b.resumen.monto - a.resumen.monto);
-  }, [datos.pedidos, canales]);
-  const totalCanales = useMemo(() => resumirVentas(datos.pedidos), [datos.pedidos]);
+  const filasCanal = useMemo<FilaCanal[]>(
+    () =>
+      canales
+        .map((c) => {
+          const agregado = porCanal.get(c.clave);
+          const resumenCanal = agregado ? resumenDeAgregado(agregado) : undefined;
+          return { clave: c.clave, nombre: c.nombre, grafias: c.grafias, resumen: resumenCanal };
+        })
+        .filter((f): f is FilaCanal => !!f.resumen)
+        .sort((a, b) => b.resumen.monto - a.resumen.monto),
+    [porCanal, canales],
+  );
+  const totalCanales = datos.ventas;
 
   const publicidadTotal = conPublicidad ? filas.reduce((s, f) => s + (f.publicidad ?? 0), 0) : null;
   const costoPorVentaTotal = costoPorVenta(publicidadTotal, resumen.pedidos);
@@ -382,8 +401,8 @@ export default function ControlDiarioPage() {
           titulo={`Ventas por día · ${nombreVista}`}
           subtitulo={
             hayObjetivo(objetivo)
-              ? "Pedidos entregados por día de creación (hora Lima). La línea punteada es el objetivo."
-              : "Pedidos entregados por día de creación (hora Lima)."
+              ? "Pedidos entregados por día de entrega (hora Lima). La línea punteada es el objetivo."
+              : "Pedidos entregados por día de entrega (hora Lima)."
           }
         >
           {datos.cargando ? (
@@ -474,7 +493,7 @@ export default function ControlDiarioPage() {
                 className="col-span-2"
                 label="Avance del periodo"
                 valor={formatPercent(avancePeriodo)}
-                sub={`${formatSoles(resumen.monto)} de ${formatSoles(objetivoPeriodo)}. Los últimos días suben a medida que se entregan los pedidos en camino.`}
+                sub={`${formatSoles(resumen.monto)} de ${formatSoles(objetivoPeriodo)}`}
               />
             </dl>
           )}
@@ -513,9 +532,9 @@ export default function ControlDiarioPage() {
           />
         )}
         <p className="mt-2 text-[11px] text-pc-text-muted">
-          Una venta es un pedido entregado y cuenta en el día en que se creó: los últimos días suben a medida que se
-          entregan los pedidos en camino.
+          Una venta es un pedido entregado y cuenta en el día en que se entregó.
         </p>
+        <NotaSinHistorial cantidad={servidor.calidad.entregasSinHistorial} className="mt-1" />
       </PanelCard>
 
       <PanelCard
