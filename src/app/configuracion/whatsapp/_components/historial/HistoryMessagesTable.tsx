@@ -64,7 +64,7 @@ function StatusCell({ message }: { message: WhatsAppHistoryMessage }) {
       <div className="space-y-0.5">
         <MessageStatusTicks status={message.status} />
         <p className="m-0 text-xs text-wa-muted">
-          Número de contingencia
+          Enviado a mano
           {message.assistedBy ? ` · marcado por ${message.assistedBy.name}` : ""}
         </p>
       </div>

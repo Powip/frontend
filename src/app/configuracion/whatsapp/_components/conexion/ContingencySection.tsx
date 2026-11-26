@@ -117,7 +117,7 @@ function BackupNumber({ settings }: { settings: WhatsAppContingencySettings | nu
         <p className="m-0 text-xs text-wa-muted">
           {backup
             ? (backup.verifiedName ?? "App WhatsApp Business")
-            : "Sin número de respaldo informado. Cómo se registra un número solo app todavía no está definido."}
+            : "Sin número de respaldo informado."}
         </p>
       </div>
       <WaPill tone="warn">Envío asistido</WaPill>

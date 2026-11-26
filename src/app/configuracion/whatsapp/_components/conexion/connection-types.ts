@@ -1,12 +1,7 @@
-import type { WhatsAppConnectionType } from "@/features/whatsapp/enums/whatsapp.enums";
 import type { WhatsAppTestRun } from "@/features/whatsapp/models/connection.model";
 import type { ContingencyValues } from "@/features/whatsapp/schemas/connection.schema";
 
 export interface ConnectionMutations {
-  changeType?: (input: {
-    accountId: string;
-    connectionType: WhatsAppConnectionType;
-  }) => Promise<void>;
   refresh?: (accountId: string) => Promise<void>;
   disconnect?: (accountId: string) => Promise<void>;
   sendTest?: (input: {
@@ -22,6 +17,8 @@ export interface ConnectionMutations {
       mode: "api" | "coex";
       /** Número que la persona dice que conecta (opcional): Powip no adivina cuál es. */
       expectedPhoneNumber?: string;
+      /** Reconexión: el número conserva su vendedora y su marca de principal. */
+      keepRole?: boolean;
     } & NumberRoleChoice,
   ) => Promise<void>;
   /**
@@ -34,8 +31,11 @@ export interface ConnectionMutations {
       selectionId: string;
       phoneNumberId?: string;
       confirmReassign?: boolean;
+      keepRole?: boolean;
     } & NumberRoleChoice,
   ) => Promise<void>;
+  /** Pasa un número conectado a «Solo app» (Powip olvida la llave de Meta). */
+  switchToApp?: (accountId: string) => Promise<void>;
   /** Alta manual: suma un número a la tienda con los datos de WhatsApp Manager. */
   connectManual?: (
     input: {
@@ -47,6 +47,14 @@ export interface ConnectionMutations {
       businessPhoneNumber?: string;
     } & NumberRoleChoice,
   ) => Promise<void>;
+  /** «Solo app»: guarda el número que vive solo en el celular. No consulta a Meta. */
+  connectAppOnly?: (input: {
+    storeId: string;
+    phoneNumber: string;
+    role: "store" | "seller";
+    seller: { id: string; name: string } | null;
+    confirmReassign?: boolean;
+  }) => Promise<void>;
   assignNumber?: (input: {
     accountId: string;
     userId: string | null;

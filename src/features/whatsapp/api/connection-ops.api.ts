@@ -30,6 +30,23 @@ export async function assignWhatsAppNumber(
   await axiosAuth.put(`${BASE}/accounts/${encodeURIComponent(accountId)}/assignment`, input);
 }
 
+/** «Solo app»: guarda un número que vive solo en el celular. */
+export async function connectAppOnlyWhatsAppNumber(input: {
+  storeId: string;
+  phoneNumber: string;
+  assignedUserId?: string;
+  assignedUserName?: string;
+  confirmReassign?: boolean;
+}): Promise<{ id: string }> {
+  const { data } = await axiosAuth.post<{ id: string }>(`${BASE}/accounts/app-only`, input);
+  return data;
+}
+
+/** Pasa un número conectado a «Solo app»: Powip deja de enviar y recibir con él. */
+export async function switchWhatsAppNumberToAppOnly(accountId: string): Promise<void> {
+  await axiosAuth.post(`${BASE}/accounts/${encodeURIComponent(accountId)}/switch-to-app`, {});
+}
+
 /** Número principal de la tienda: el que envía los avisos automáticos. */
 export async function setPrimaryWhatsAppNumber(accountId: string): Promise<void> {
   await axiosAuth.post(`${BASE}/accounts/${encodeURIComponent(accountId)}/primary`, {});
@@ -37,7 +54,9 @@ export async function setPrimaryWhatsAppNumber(accountId: string): Promise<void>
 
 /** Coexistencia de los números de la empresa (los que siguen en la app del celular). */
 export async function listWhatsAppCoexistence(): Promise<WhatsAppCoexistenceState[]> {
-  const { data } = await axiosAuth.get<{ items?: WhatsAppCoexistenceState[] }>(`${BASE}/accounts/coexistence`);
+  const { data } = await axiosAuth.get<{ items?: WhatsAppCoexistenceState[] }>(
+    `${BASE}/accounts/coexistence`,
+  );
   return data?.items ?? [];
 }
 
@@ -50,7 +69,8 @@ export async function syncWhatsAppAppData(accountId: string): Promise<WhatsAppCo
     );
     return data;
   } catch (error) {
-    const message = (error as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+    const message = (error as { response?: { data?: { message?: unknown } } })?.response?.data
+      ?.message;
     throw typeof message === "string" && message ? new Error(message) : error;
   }
 }
@@ -138,7 +158,10 @@ interface UsageDto {
 }
 
 // C-08 · GET /wa/usage?storeId=&month=
-export async function getWhatsAppUsage(storeId: string, month?: string): Promise<WhatsAppUsageSummary> {
+export async function getWhatsAppUsage(
+  storeId: string,
+  month?: string,
+): Promise<WhatsAppUsageSummary> {
   assertWhatsAppContractAvailable("usageAndPricing");
   const { data } = await axiosAuth.get<UsageDto>(`${BASE}/usage`, {
     params: { storeId, month: month ?? undefined },
@@ -225,7 +248,9 @@ const toContingency = (dto: ContingencyDto): WhatsAppContingencySettings => ({
 });
 
 // C-10 · GET /wa/contingency?storeId=
-export async function getWhatsAppContingency(storeId: string): Promise<WhatsAppContingencySettings> {
+export async function getWhatsAppContingency(
+  storeId: string,
+): Promise<WhatsAppContingencySettings> {
   assertWhatsAppContractAvailable("contingency");
   const { data } = await axiosAuth.get<ContingencyDto>(`${BASE}/contingency`, {
     params: { storeId },

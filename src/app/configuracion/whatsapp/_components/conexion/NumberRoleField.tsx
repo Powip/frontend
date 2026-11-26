@@ -59,6 +59,10 @@ interface NumberRoleFieldProps {
   onSellerChange: (sellerId: string) => void;
   agents: WhatsAppAgentOption[];
   disabled?: boolean;
+  /** Roles que se ofrecen (todos si no se indica). */
+  roles?: NumberRole[];
+  /** Ayuda propia por tipo (p. ej. «Solo app», que no envía solo ni recibe chats). */
+  hints?: Partial<Record<NumberRole, string>>;
 }
 
 /** Tipo de número al darlo de alta: de la empresa, de la tienda o de una vendedora. */
@@ -70,7 +74,10 @@ export function NumberRoleField({
   onSellerChange,
   agents,
   disabled,
+  roles,
+  hints,
 }: NumberRoleFieldProps) {
+  const options = roles ? ROLE_OPTIONS.filter((o) => roles.includes(o.value)) : ROLE_OPTIONS;
   const current = ROLE_OPTIONS.find((option) => option.value === role) ?? ROLE_OPTIONS[1];
   return (
     <div className="flex flex-col gap-3">
@@ -87,14 +94,14 @@ export function NumberRoleField({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {ROLE_OPTIONS.map((option) => (
+            {options.map((option) => (
               <SelectItem key={option.value} value={option.value}>
                 {option.value === "store" ? `${option.label} (${storeName})` : option.label}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-        <span className={cn(waHint, "m-0")}>{current.hint}</span>
+        <span className={cn(waHint, "m-0")}>{hints?.[current.value] ?? current.hint}</span>
       </div>
       {role === "seller" && (
         <div className={waField}>

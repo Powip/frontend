@@ -141,7 +141,7 @@ export function HistoryKpis({ metrics }: { metrics: WhatsAppHistoryMetrics }) {
         title="Asistidos"
         icon={KPI_ICONS.assisted}
         value={metrics.assisted}
-        detail="Enviados a mano por el número de contingencia"
+        detail="Enviados a mano desde el celular"
         note="No cuentan como enviados, entregados ni leídos."
         tone="muted"
       />

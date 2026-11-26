@@ -1,6 +1,6 @@
 "use client";
 
-import { History, Plus, Smartphone, Star } from "lucide-react";
+import { History, Plus, Smartphone, Star, UserRound } from "lucide-react";
 import { useId, useState } from "react";
 import {
   AlertDialog,
@@ -32,10 +32,12 @@ import {
   waDialogTitle,
   waSelectTriggerSm,
 } from "@/components/whatsapp/ui/wa-classes";
+import { getConnectionTypeDefinition } from "@/features/whatsapp/constants/whatsapp-connection-catalog";
 import type {
   WhatsAppAccount,
   WhatsAppCoexistenceState,
 } from "@/features/whatsapp/models/connection.model";
+
 import type { WhatsAppAgentOption } from "@/features/whatsapp/models/conversation.model";
 import type { WhatsAppResourceState as ResourceState } from "@/features/whatsapp/models/resource-state.model";
 import { cn } from "@/lib/utils";
@@ -44,7 +46,7 @@ import { type ActionState, type ConnectionMutations, errorMessage } from "./conn
 /** Valor del selector para «sin vendedora»: el número es de la tienda. */
 const STORE_OWNED = "__store__";
 
-export type AddNumberMode = "api" | "coex" | "manual";
+export type AddNumberMode = "api" | "coex" | "manual" | "app";
 
 interface StoreWhatsAppNumbersSectionProps {
   storeName: string;
@@ -92,6 +94,20 @@ export function StoreWhatsAppNumbersSection({
   const list = accounts.kind === "ready" ? accounts.data : [];
   const agentList = agents.kind === "ready" ? agents.data : [];
   const blocked = !!blockedReason;
+  const isAppOnly = (account: WhatsAppAccount) => account.connectionType === "app_manual";
+  const hasAppOnly = list.some(isAppOnly);
+  const appOnlyPrimary = list.some(
+    (account) => isAppOnly(account) && (account.isPrimary ?? account.role === "principal"),
+  );
+  const description = [
+    "Cada vendedora puede tener su propio número. Los chats de un número llegan a su vendedora; sin vendedora, el número es de la tienda.",
+    appOnlyPrimary
+      ? "Los avisos del principal no salen solos: quedan en la bandeja de envío asistido."
+      : "El principal envía los avisos automáticos.",
+    hasAppOnly ? "Los números «Solo app» no reciben chats en Powip." : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
   const { setPrimary, assignNumber, syncAppData, disconnect } = mutations;
 
   const run = async (accountId: string, task: () => Promise<void>, fallback: string) => {
@@ -114,7 +130,7 @@ export function StoreWhatsAppNumbersSection({
       <WaCardHeader
         titleId="store-wa-numbers-title"
         title={`Números de ${storeName}`}
-        description="Cada vendedora puede tener su propio número. Los chats de un número llegan a su vendedora; sin vendedora, el número es de la tienda. El principal envía los avisos automáticos."
+        description={description}
       />
 
       {accounts.kind === "loading" && (
@@ -158,6 +174,9 @@ export function StoreWhatsAppNumbersSection({
                   <span className="block text-xs text-wa-muted">
                     {[
                       account.verifiedName,
+                      account.connectionType
+                        ? getConnectionTypeDefinition(account.connectionType).title
+                        : null,
                       account.isCompanyDefault ? "Número de la empresa" : null,
                     ]
                       .filter(Boolean)
@@ -315,6 +334,15 @@ export function StoreWhatsAppNumbersSection({
         </Button>
         <Button
           type="button"
+          className={waButton({ size: "sm" })}
+          disabled={blocked}
+          onClick={() => onAdd("app")}
+        >
+          <UserRound aria-hidden="true" />
+          Agregar número solo app
+        </Button>
+        <Button
+          type="button"
           className={waButton({ size: "sm", variant: "ghost" })}
           disabled={blocked}
           onClick={() => onAdd("manual")}
@@ -338,7 +366,9 @@ export function StoreWhatsAppNumbersSection({
           <div className={cn(waDialogBody, "space-y-3")}>
             <AlertDialogDescription className="m-0 text-sm text-wa-muted">
               Solo se desconecta este número. Los otros números de {storeName} siguen funcionando.
-              Sus chats se conservan en la Bandeja.
+              {toDisconnect?.connectionType === "app_manual"
+                ? " El número sigue igual en el celular."
+                : " Sus chats se conservan en la Bandeja."}
             </AlertDialogDescription>
           </div>
           <AlertDialogFooter className={waDialogFooter}>
