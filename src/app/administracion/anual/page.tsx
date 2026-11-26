@@ -6,7 +6,8 @@
  * - Año = el del «Hasta» del periodo elegido (antes siempre el año calendario de hoy). Los meses futuros quedan
  *   vacíos y el mes en curso se mide hasta hoy (`useResultadosAnuales`).
  * - Cada mes es la misma cuenta que el resto del módulo (`calcularResultados`): costo por línea con aviso de ventas
- *   sin costo, día de creación en hora Lima (sin `updated_at`), gastos repartidos por días y publicidad de una fuente.
+ *   sin costo, día de ENTREGA en hora Lima (D1, calculado en ms-ventas: una sola consulta por el año), envíos = flete
+ *   por pedido (D9), gastos repartidos por días y publicidad de una fuente.
  * - Margen del año ponderado: utilidad operativa del año ÷ ventas del año, no el promedio de los % de cada mes.
  * - Comparación año a la fecha contra el año anterior a la misma fecha (antes: 12 meses contra lo que iba del año).
  * - Proyección = ritmo diario del año a la fecha × días del año (antes contaba meses futuros con gastos cargados).
@@ -36,6 +37,7 @@ import {
   formatPercent,
   formatSoles,
   KpiCard,
+  NotaFlete,
   PanelCard,
   PanelError,
   PanelSkeleton,
@@ -55,6 +57,7 @@ import {
 } from "../_lib/periodo";
 import type { EstadoPublicidad } from "../_lib/publicidad";
 import type { Resultados } from "../_lib/resultados";
+import { notaFlete } from "../_lib/servidor";
 import { type ResultadoMes, useAdminContexto, useResultadosAnuales } from "../_lib/useResultados";
 
 // ---- Semáforo ---------------------------------------------------------------------------------
@@ -258,6 +261,7 @@ export default function ResumenAnualPage() {
         subtitulo="Utilidad bruta = ventas − costo de producto − merma. Los meses que faltan quedan vacíos."
       >
         <TablaMeses filas={filas} total={total} metas={metas} diasMedidos={diasMedidos} diasAnio={diasAnio} />
+        <NotaFlete nota={notaFlete(actual.flete)} className="mt-2" />
       </PanelCard>
 
       <PanelCard

@@ -52,23 +52,6 @@ export const updateGasto = async (
   return data;
 };
 
-export const getCourierCost = async (
-  storeIds: string[],
-  fromDate: string,
-  toDate: string,
-  token: string,
-): Promise<number> => {
-  if (storeIds.length === 0) return 0;
-  const { data } = await axios.get(
-    `${API.courier}/shipping-guides/cost`,
-    {
-      params: { storeIds: storeIds.join(','), fromDate, toDate },
-      headers: { Authorization: `Bearer ${token}` },
-    },
-  );
-  return Number(data.totalCost ?? 0);
-};
-
 export const deleteGasto = async (
   companyId: string,
   gastoId: string,

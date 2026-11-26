@@ -4,14 +4,14 @@ import { formatSoles, formatSolesDecimales } from "@/features/panel-control/shar
 import type { IGastoOperativo } from "@/interfaces/IAdmin";
 import { METAS_VACIAS, useMetasAnuales } from "../../_lib/metasStorage";
 import type { EstadoPublicidad, PublicidadConectada } from "../../_lib/publicidad";
-import { calcularResultados, prorratearGastos } from "../../_lib/resultados";
+import { datosPeriodoDe } from "../../_lib/__tests__/servidor-fixtures";
 import {
   type DatosPeriodo,
   useAdminContexto,
   usePedidosEnTransito,
   useResultadosPeriodo,
 } from "../../_lib/useResultados";
-import { type PedidoAdmin, resumirVentas } from "../../_lib/ventas";
+import type { PedidoAdmin } from "../../_lib/ventas";
 import ReporteRapidoPage from "../page";
 
 jest.mock("@/contexts/AdminPeriodContext", () => ({ useAdminPeriod: jest.fn() }));
@@ -69,14 +69,12 @@ function armarDatos(
     pedidos?: PedidoAdmin[];
     gastos?: IGastoOperativo[];
     envios?: number;
+    fleteConocido?: number;
     conectada?: number;
     estado?: EstadoPublicidad;
     cargando?: boolean;
   } = {},
 ): DatosPeriodo {
-  const pedidos = opciones.pedidos ?? PEDIDOS;
-  const gastosCrudos = opciones.gastos ?? [gasto("PLANILLA", 300), gasto("PUBLICIDAD", 300)];
-  const envios = opciones.envios ?? 60;
   const estado = opciones.estado ?? "ok";
   const publicidad: PublicidadConectada = {
     estado,
@@ -87,29 +85,13 @@ function armarDatos(
     provisional: false,
     otrasMonedas: [],
   };
-  const ventas = resumirVentas(pedidos);
-  const gastos = prorratearGastos(gastosCrudos, desde, hasta);
-  return {
-    desde,
-    hasta,
-    cargando: opciones.cargando ?? false,
-    error: null,
-    pedidos,
-    ventas,
-    gastos,
-    gastosCrudos,
-    merma: { unidades: 0, costo: 0 },
-    envios,
+  return datosPeriodoDe(desde, hasta, opciones.pedidos ?? PEDIDOS, {
+    gastos: opciones.gastos ?? [gasto("PLANILLA", 300), gasto("PUBLICIDAD", 300)],
+    envios: opciones.envios ?? 60,
+    fleteConocido: opciones.fleteConocido,
     publicidad,
-    resultados: calcularResultados({
-      ventas,
-      gastos,
-      merma: 0,
-      envios,
-      publicidadConectada: publicidad.monto,
-      igvPct: 18,
-    }),
-  };
+    cargando: opciones.cargando,
+  });
 }
 
 function preparar(
@@ -122,23 +104,21 @@ function preparar(
   jest.mocked(useAdminContexto).mockReturnValue({ companyId: "c1", token: "t", storeIds: [], igvPct: 18, hoy: HOY });
   jest.mocked(useResultadosPeriodo).mockReturnValue(armarDatos(desde, hasta, opciones));
   jest.mocked(useMetasAnuales).mockReturnValue([metas, jest.fn()]);
+  // EN_ENVIO 200 + ASIGNADO_A_GUIA 100 + un DESPACHADO de setiembre que debe 200 (antiguo).
   jest.mocked(usePedidosEnTransito).mockReturnValue({
     cargando: false,
     error: null,
     desde: "2026-08-29",
     hasta: HOY,
+    pedidos: 3,
     saldo: 500,
-    pedidos: [
-      pedido({ id: "t1", status: "EN_ENVIO", grandTotal: 200, created_at: "2026-11-20T15:00:00Z" }),
-      pedido({ id: "t2", status: "ASIGNADO_A_GUIA", grandTotal: 100, created_at: "2026-11-25T15:00:00Z" }),
-      pedido({
-        id: "t3",
-        status: "DESPACHADO",
-        grandTotal: 300,
-        payments: [{ status: "PAID", amount: 100 }],
-        created_at: "2026-09-01T15:00:00Z",
-      }),
-    ],
+    porEstado: {
+      ASIGNADO_A_GUIA: { pedidos: 1, saldo: 100 },
+      EN_ENVIO: { pedidos: 1, saldo: 200 },
+      DESPACHADO: { pedidos: 1, saldo: 200 },
+    },
+    porCourier: [],
+    antiguos: { dias: 30, pedidos: 1, saldo: 200 },
   });
 }
 
@@ -171,6 +151,16 @@ describe("Reporte rápido", () => {
     expect(screen.queryByText(/GANANCIA/)).not.toBeInTheDocument();
     // AvisoCostos: la venta de la web no tiene costo.
     expect(screen.getByText(/1 venta no tiene costo cargado/)).toBeInTheDocument();
+  });
+
+  it("los envíos son el flete por pedido, con la nota de cobertura en la tarjeta y en el reporte", () => {
+    preparar("2026-11-01", HOY, { fleteConocido: 1 });
+    render(<ReporteRapidoPage />);
+    expect(within(kpi("Envíos")).getByText("Flete por pedido · conocido en 1 de 2 entregas")).toBeInTheDocument();
+    const cascada = screen.getByRole("table", { name: "Reporte de 1–26 nov 2026" });
+    const fila = within(cascada).getByRole("row", { name: /Envíos \(flete por pedido\)/ });
+    expect(within(fila).getByText(/Flete conocido en 1 de 2 entregas: el resto no suma envío/)).toBeInTheDocument();
+    expect(screen.queryByText(/Cotización del courier/)).not.toBeInTheDocument();
   });
 
   it("proyecta el mes en curso al ritmo diario con la misma cuenta y compara con la meta del mes", () => {

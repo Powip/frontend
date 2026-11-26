@@ -6,10 +6,9 @@ import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
 import { formatSoles } from "@/features/panel-control/shared/utils/format";
 import { useAdminGastos } from "@/hooks/useAdminQueries";
 import type { IGastoOperativo } from "@/interfaces/IAdmin";
-import type { PublicidadConectada } from "../../_lib/publicidad";
-import { calcularResultados, prorratearGastos } from "../../_lib/resultados";
+import { datosPeriodoDe } from "../../_lib/__tests__/servidor-fixtures";
 import { type DatosPeriodo, useResultadosPeriodo } from "../../_lib/useResultados";
-import { type PedidoAdmin, resumirVentas } from "../../_lib/ventas";
+import type { PedidoAdmin } from "../../_lib/ventas";
 import GastosPage from "../page";
 
 jest.mock("@/contexts/AdminPeriodContext", () => ({ useAdminPeriod: jest.fn() }));
@@ -59,31 +58,7 @@ const PEDIDOS: PedidoAdmin[] = [
 ];
 
 function datosDe(desde: string, hasta: string, pedidos: PedidoAdmin[], gastosCrudos: IGastoOperativo[]): DatosPeriodo {
-  const ventas = resumirVentas(pedidos);
-  const gastos = prorratearGastos(gastosCrudos, desde, hasta);
-  const publicidad: PublicidadConectada = {
-    estado: "sin_cuentas",
-    monto: 0,
-    porDia: new Map(),
-    cobertura: null,
-    diasFaltantes: 0,
-    provisional: false,
-    otrasMonedas: [],
-  };
-  return {
-    desde,
-    hasta,
-    cargando: false,
-    error: null,
-    pedidos,
-    ventas,
-    gastos,
-    gastosCrudos,
-    merma: { unidades: 0, costo: 0 },
-    envios: 0,
-    publicidad,
-    resultados: calcularResultados({ ventas, gastos, merma: 0, envios: 0, publicidadConectada: 0, igvPct: 18 }),
-  };
+  return datosPeriodoDe(desde, hasta, pedidos, { gastos: gastosCrudos });
 }
 
 function usarPeriodo(desde: string, hasta: string, pedidos = PEDIDOS, gastos = GASTOS) {

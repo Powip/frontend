@@ -5,7 +5,8 @@
  *
  * Por cobrar:
  * - Saldo en calle: pedidos hoy en tránsito (ASIGNADO_A_GUIA + EN_ENVIO + DESPACHADO, últimos 90 días) menos lo ya
- *   pagado, agrupado por courier (`usePedidosEnTransito`). Antes solo DESPACHADO (~25 % del saldo real).
+ *   pagado, por courier (`usePedidosEnTransito`, calculado en ms-ventas; acá se juntan las grafías de un mismo
+ *   courier). Antes solo DESPACHADO (~25 % del saldo real).
  * - Cobros confirmados que el courier todavía no liquidó (`courierSettlementBalances`, ms-courier).
  * - Otras cuentas registradas a mano (solo en este navegador).
  * Por pagar: solo lo registrado a mano (solo en este navegador).
@@ -79,7 +80,7 @@ export default function CuentasPage() {
   const [vista, setVista] = useState<"abiertas" | "historial">("abiertas");
   const [form, setForm] = useState<typeof FORM_VACIO | null>(null);
 
-  const porCourier = useMemo(() => saldoEnCallePorCourier(transito.pedidos), [transito.pedidos]);
+  const porCourier = useMemo(() => saldoEnCallePorCourier(transito.porCourier), [transito.porCourier]);
   const totalCobrarManual = totalCuentas(cobrarManual);
   const totalPagar = totalCuentas(pagarManual);
 
@@ -135,7 +136,7 @@ export default function CuentasPage() {
           label="En calle"
           loading={transito.cargando}
           value={formatSoles(transito.saldo)}
-          sub={`${formatNumber(transito.pedidos.length)} pedidos en tránsito, lo que falta cobrar`}
+          sub={`${formatNumber(transito.pedidos)} pedidos en tránsito, lo que falta cobrar`}
         />
         <KpiCard
           label="Courier por liquidar"
@@ -178,7 +179,7 @@ export default function CuentasPage() {
               ]}
               footer={{
                 courier: "Total",
-                pedidos: formatNumber(transito.pedidos.length),
+                pedidos: formatNumber(transito.pedidos),
                 conSaldo: formatNumber(porCourier.reduce((s, f) => s + f.conSaldo, 0)),
                 saldo: formatSoles(transito.saldo),
               }}

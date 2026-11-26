@@ -80,7 +80,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
           <main id={CONTENIDO_ID} className="px-4 pb-16 pt-4 outline-none sm:px-6 sm:pt-5">
             <p className="mb-3 text-[11px] text-pc-text-muted">
               <span className="font-semibold text-pc-text">{etiquetaPeriodo(fromDate, toDate)}</span> · hora Lima ·
-              una venta es un pedido entregado y se cuenta en el día en que se creó
+              una venta es un pedido entregado y se cuenta en el día en que se entregó
             </p>
             {ubicacion && (
               <>

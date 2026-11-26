@@ -8,12 +8,15 @@
  *
  * - Márgenes como fracciones de las ventas con IGV (la misma base que el estado de resultados).
  * - Por canal solo se reparte lo que el pedido trae (costo de producto y comisión); envíos, publicidad, merma y
- *   gastos fijos no tienen canal y se aclara en pantalla.
+ *   gastos fijos no tienen canal y se aclara en pantalla. Los canales llegan de ms-ventas (`porCanal`, una fila por
+ *   grafía) y acá se juntan las grafías de un mismo canal.
+ * - Envíos = flete por pedido (D9), con la nota de en cuántas entregas se conoce.
  */
 
 import { useMemo } from "react";
 import { HBarList, type HBarRow } from "@/components/panel-control/charts/HBarList";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
+import type { AgregadoCanal } from "@/interfaces/IAdministracion";
 import {
   AdminTable,
   AvisoCostos,
@@ -22,6 +25,7 @@ import {
   formatPercent,
   formatSoles,
   KpiCard,
+  NotaFlete,
   PanelCard,
   PanelError,
   PanelSkeleton,
@@ -30,13 +34,9 @@ import {
 } from "../_components/ui";
 import { nombreCanal } from "../_lib/canales";
 import { CATEGORIAS_FIJAS, NOMBRE_CATEGORIA, type Resultados } from "../_lib/resultados";
+import { notaFlete, ventasPorCanalServidor } from "../_lib/servidor";
 import { useResultadosPeriodo } from "../_lib/useResultados";
-import {
-  type PedidoAdmin,
-  type ResumenVentas,
-  resumirVentas,
-  ventasPorCanal,
-} from "../_lib/ventas";
+import type { ResumenVentas } from "../_lib/ventas";
 
 interface FilaCanal {
   clave: string;
@@ -64,8 +64,8 @@ function filaDe(clave: string, nombre: string, v: ResumenVentas): FilaCanal {
   };
 }
 
-function filasPorCanal(pedidos: PedidoAdmin[]): FilaCanal[] {
-  return [...ventasPorCanal(pedidos).entries()]
+function filasPorCanal(porCanal: AgregadoCanal[]): FilaCanal[] {
+  return [...ventasPorCanalServidor(porCanal).entries()]
     .map(([clave, v]) => filaDe(clave, nombreCanal(clave), v))
     .sort((a, b) => b.ventas - a.ventas || a.nombre.localeCompare(b.nombre));
 }
@@ -147,7 +147,7 @@ function filasVariables(r: Resultados): HBarRow[] {
     { key: "costo", label: "Costo de producto", value: r.costoProducto },
     { key: "merma", label: "Merma", value: r.merma },
     { key: "comisiones", label: "Comisiones de canal", value: r.comisiones },
-    { key: "envios", label: "Envíos", value: r.envios },
+    { key: "envios", label: "Envíos (flete por pedido)", value: r.envios },
     { key: "publicidad", label: "Publicidad", value: r.publicidad.total },
   ].map((fila) => ({ ...fila, barColor: COLOR_VARIABLES }));
 }
@@ -164,11 +164,8 @@ function filasFijos(r: Resultados): HBarRow[] {
 export default function UtilidadPage() {
   const { fromDate, toDate } = useAdminPeriod();
   const datos = useResultadosPeriodo(fromDate, toDate);
-  const canales = useMemo(() => filasPorCanal(datos.pedidos), [datos.pedidos]);
-  const totalCanales = useMemo(
-    () => filaDe("total", "Total", resumirVentas(datos.pedidos)),
-    [datos.pedidos],
-  );
+  const canales = useMemo(() => filasPorCanal(datos.servidor.porCanal), [datos.servidor.porCanal]);
+  const totalCanales = useMemo(() => filaDe("total", "Total", datos.ventas), [datos.ventas]);
 
   if (datos.error) {
     return <PanelError error={datos.error instanceof Error ? datos.error : null} />;
@@ -238,6 +235,7 @@ export default function UtilidadPage() {
                 El costo de producto solo suma las ventas que lo tienen cargado.
               </p>
             )}
+            <NotaFlete nota={notaFlete(datos.flete)} />
           </div>
           <div className="min-w-0 space-y-2">
             <div className="flex flex-wrap items-baseline justify-between gap-2">

@@ -3,9 +3,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { formatPercent, formatSoles } from "@/features/panel-control/shared/utils/format";
 import type { IGastoOperativo } from "@/interfaces/IAdmin";
 import type { PublicidadConectada } from "../../_lib/publicidad";
-import { calcularResultados, prorratearGastos } from "../../_lib/resultados";
+import { datosPeriodoDe } from "../../_lib/__tests__/servidor-fixtures";
 import type { DatosPeriodo } from "../../_lib/useResultados";
-import { type PedidoAdmin, resumirVentas } from "../../_lib/ventas";
+import type { PedidoAdmin } from "../../_lib/ventas";
 import UtilidadPage from "../page";
 
 jest.mock("@/contexts/AdminPeriodContext", () => ({
@@ -39,12 +39,10 @@ function datos(
     gastos?: IGastoOperativo[];
     merma?: number;
     envios?: number;
+    fleteConocido?: number;
     publicidad?: number | null;
   } = {},
 ): DatosPeriodo {
-  const gastosCrudos = opciones.gastos ?? [];
-  const ventas = resumirVentas(pedidos);
-  const gastos = prorratearGastos(gastosCrudos, DESDE, HASTA);
   const publicidad: PublicidadConectada = {
     estado: "ok",
     monto: opciones.publicidad ?? 0,
@@ -54,27 +52,7 @@ function datos(
     provisional: false,
     otrasMonedas: [],
   };
-  return {
-    desde: DESDE,
-    hasta: HASTA,
-    cargando: false,
-    error: null,
-    pedidos,
-    ventas,
-    gastos,
-    gastosCrudos,
-    merma: { unidades: 0, costo: opciones.merma ?? 0 },
-    envios: opciones.envios ?? 0,
-    publicidad,
-    resultados: calcularResultados({
-      ventas,
-      gastos,
-      merma: opciones.merma ?? 0,
-      envios: opciones.envios ?? 0,
-      publicidadConectada: publicidad.monto,
-      igvPct: 18,
-    }),
-  };
+  return datosPeriodoDe(DESDE, HASTA, pedidos, { ...opciones, publicidad });
 }
 
 const NOV = "2026-11-10T15:00:00Z";
@@ -178,6 +156,20 @@ describe("Utilidad y margen", () => {
     // Sin monto, la categoría no se lista.
     expect(within(fijos).queryByText("Courier propio")).not.toBeInTheDocument();
     expect(within(fijos).getByText(formatSoles(600))).toBeInTheDocument();
+  });
+
+  it("los envíos son el flete por pedido y avisa si se conoce en pocas entregas", () => {
+    mockPeriodo.mockReturnValue(datos(pedidos, { envios: 20, fleteConocido: 1 }));
+    renderPagina();
+    const variables = screen.getByRole("list", {
+      name: "Costos variables como porcentaje de las ventas",
+    });
+    expect(within(variables).getByText("Envíos (flete por pedido)")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Envíos = flete por pedido. Flete conocido en 1 de 3 entregas: el resto no suma envío, así que la utilidad sale sobreestimada.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("calcula el margen por canal con los canales de los datos", () => {

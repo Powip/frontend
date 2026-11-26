@@ -6,8 +6,10 @@
  * - Unidades = Σ `quantity` de las líneas de producto (sin servicios). Antes se contaban pedidos o líneas.
  * - Costo = Σ `unitCost × quantity` de las líneas (pisado con el costo real al despachar); si falta en alguna línea,
  *   el `costAmount` del pedido. Si ninguno lo trae, la venta queda «sin costo» y se avisa en pantalla.
- * - Fecha de la venta = día de creación en hora Lima (el filtro del backend). Ya no se usa `updated_at`, que cambia
- *   con cualquier edición. La Fase 2 pasa a la fecha de entrega.
+ * - Fecha de la venta = día de ENTREGA en hora Lima (D1). Desde la Fase 2 las pantallas ya no reciben pedidos crudos:
+ *   ms-ventas aplica estas mismas reglas y devuelve los agregados (`/administracion/resultados`, ver `servidor.ts`).
+ *   Este módulo queda como la definición de referencia (y lo usan los fixtures de las pruebas); `diaVenta` sigue
+ *   leyendo `created_at` porque es lo único que trae un pedido crudo.
  * - En tránsito = ASIGNADO_A_GUIA + EN_ENVIO + DESPACHADO (antes solo DESPACHADO).
  */
 
@@ -134,7 +136,7 @@ export function estaEnTransito(pedido: PedidoAdmin): boolean {
   );
 }
 
-/** Día de la venta (creación, hora Lima). */
+/** Día de creación del pedido (hora Lima). El servidor fecha la venta el día de su entrega (D1). */
 export function diaVenta(pedido: PedidoAdmin): DiaKey | null {
   return diaLima(pedido.created_at);
 }

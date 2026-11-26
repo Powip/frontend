@@ -124,6 +124,40 @@ export function AvisoCostos({ costo, className }: { costo: CostoParaAviso; class
   return <div className={cn("space-y-2", className)}>{avisos}</div>;
 }
 
+/**
+ * Ventas sin entrada a ENTREGADO en el historial (`calidad.entregasSinHistorial`): el servidor no sabe qué día se
+ * entregaron y las cuenta en el día en que se crearon. Nada si son 0.
+ */
+export function NotaSinHistorial({ cantidad, className }: { cantidad: number; className?: string }) {
+  if (!(cantidad > 0)) return null;
+  const una = cantidad === 1;
+  return (
+    <p className={cn("text-[11px] leading-relaxed text-pc-text-muted", className)}>
+      {cantidad.toLocaleString("es-PE")} {una ? "venta no tiene" : "ventas no tienen"} registrado el día de entrega:{" "}
+      {una ? "se cuenta" : "se cuentan"} en el día en que se {una ? "creó" : "crearon"}.
+    </p>
+  );
+}
+
+/**
+ * Nota de los envíos (flete por pedido, D9): en cuántas entregas se conoce. Con poca cobertura va en ámbar y dice que
+ * la utilidad sale sobreestimada. Nada sin entregas.
+ */
+export function NotaFlete({
+  nota,
+  className,
+}: {
+  nota: { texto: string; baja: boolean } | null;
+  className?: string;
+}) {
+  if (!nota) return null;
+  return (
+    <p className={cn("text-[11px] leading-relaxed", nota.baja ? "text-pc-warn" : "text-pc-text-muted", className)}>
+      Envíos = flete por pedido. {nota.texto}.
+    </p>
+  );
+}
+
 // ---- Bloques de datos -----------------------------------------------------------------------
 
 /** Dato chico dentro de una tarjeta: etiqueta arriba, valor grande abajo. */

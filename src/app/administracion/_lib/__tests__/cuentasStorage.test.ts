@@ -1,16 +1,15 @@
 import { saldoEnCallePorCourier, totalCuentas } from "../cuentasStorage";
 
 describe("cuentas por cobrar", () => {
-  it("agrupa el saldo en calle por courier sin distinguir mayúsculas ni espacios", () => {
+  it("junta las grafías de un courier sin distinguir mayúsculas ni espacios y muestra la más usada", () => {
     const grupos = saldoEnCallePorCourier([
-      { courier: "Shalom", grandTotal: 100, payments: [] },
-      { courier: "  SHALOM ", grandTotal: 50, payments: [{ status: "PAID", amount: 20 }] },
-      { courier: "Shalom", grandTotal: 10, payments: [{ status: "PENDING", amount: 10 }] },
-      { courier: "Olva", grandTotal: 80, payments: [{ status: "PAID", amount: 80 }] },
-      { courier: null, grandTotal: 40 },
+      { courier: "Shalom", pedidos: 2, saldo: 100.1, conSaldo: 2 },
+      { courier: "SHALOM  ", pedidos: 1, saldo: 30.2, conSaldo: 1 },
+      { courier: "Olva", pedidos: 1, saldo: 0, conSaldo: 0 },
+      { courier: null, pedidos: 1, saldo: 40, conSaldo: 1 },
     ]);
     expect(grupos).toEqual([
-      { clave: "SHALOM", courier: "Shalom", pedidos: 3, conSaldo: 3, saldo: 140 },
+      { clave: "SHALOM", courier: "Shalom", pedidos: 3, conSaldo: 3, saldo: 130.3 },
       { clave: "SIN_COURIER", courier: "Sin courier", pedidos: 1, conSaldo: 1, saldo: 40 },
       { clave: "OLVA", courier: "Olva", pedidos: 1, conSaldo: 0, saldo: 0 },
     ]);

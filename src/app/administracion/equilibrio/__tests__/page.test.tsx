@@ -8,9 +8,9 @@ import {
 } from "@/features/panel-control/shared/utils/format";
 import type { IGastoOperativo } from "@/interfaces/IAdmin";
 import type { PublicidadConectada } from "../../_lib/publicidad";
-import { calcularResultados, prorratearGastos } from "../../_lib/resultados";
+import { datosPeriodoDe } from "../../_lib/__tests__/servidor-fixtures";
 import type { DatosPeriodo } from "../../_lib/useResultados";
-import { type PedidoAdmin, resumirVentas } from "../../_lib/ventas";
+import type { PedidoAdmin } from "../../_lib/ventas";
 import EquilibrioPage from "../page";
 
 jest.mock("@/contexts/AdminPeriodContext", () => ({
@@ -40,11 +40,8 @@ const gasto = (extra: Partial<IGastoOperativo>): IGastoOperativo => ({
 
 function datos(
   pedidos: PedidoAdmin[],
-  opciones: { gastos?: IGastoOperativo[]; envios?: number; publicidad?: number } = {},
+  opciones: { gastos?: IGastoOperativo[]; envios?: number; fleteConocido?: number; publicidad?: number } = {},
 ): DatosPeriodo {
-  const gastosCrudos = opciones.gastos ?? [];
-  const ventas = resumirVentas(pedidos);
-  const gastos = prorratearGastos(gastosCrudos, DESDE, HASTA);
   const publicidad: PublicidadConectada = {
     estado: "ok",
     monto: opciones.publicidad ?? 0,
@@ -54,27 +51,7 @@ function datos(
     provisional: false,
     otrasMonedas: [],
   };
-  return {
-    desde: DESDE,
-    hasta: HASTA,
-    cargando: false,
-    error: null,
-    pedidos,
-    ventas,
-    gastos,
-    gastosCrudos,
-    merma: { unidades: 0, costo: 0 },
-    envios: opciones.envios ?? 0,
-    publicidad,
-    resultados: calcularResultados({
-      ventas,
-      gastos,
-      merma: 0,
-      envios: opciones.envios ?? 0,
-      publicidadConectada: publicidad.monto,
-      igvPct: 18,
-    }),
-  };
+  return datosPeriodoDe(DESDE, HASTA, pedidos, { ...opciones, publicidad });
 }
 
 const NOV = "2026-11-10T15:00:00Z";
@@ -150,6 +127,8 @@ describe("Punto de equilibrio", () => {
     expect(
       within(variables).getByRole("rowheader", { name: "Total variables" }).closest("tr"),
     ).toHaveTextContent(formatSoles(500));
+    expect(within(variables).getByRole("rowheader", { name: "Envíos (flete por pedido)" })).toBeInTheDocument();
+    expect(screen.getByText("Envíos = flete por pedido. Flete conocido en 2 de 2 entregas.")).toBeInTheDocument();
     const fijos = screen.getByRole("table", { name: "Gastos fijos del periodo" });
     expect(
       within(fijos).getByRole("rowheader", { name: "Total fijos" }).closest("tr"),

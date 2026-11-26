@@ -11,15 +11,17 @@
  *   ya no entra.
  * - Gastos mensuales repartidos por días del periodo (D8).
  * - Metas sin valores por defecto (D5): sin meta se dice «Sin meta».
- * - Adelantos: pagos de pedidos del periodo que todavía no son venta (sin entregados, anulados, incompletos ni leads).
+ * - Las ventas llegan calculadas de ms-ventas y se cuentan el día en que se ENTREGARON (D1).
+ * - Envíos = flete por pedido (D9), con la nota de en cuántas entregas se conoce.
+ * - Adelantos: lo cobrado de pedidos creados en el periodo que todavía no son venta (sin entregados, anulados,
+ *   incompletos ni leads); lo calcula ms-ventas (`enCurso`).
  */
 
 import Link from "next/link";
-import { type ReactNode, useMemo } from "react";
+import type { ReactNode } from "react";
 import { ProgressBar } from "@/components/panel-control/charts/ProgressBar";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
 import { calcularDelta } from "@/features/panel-control/shared/utils/delta";
-import { isCommercialSale } from "@/utils/commercialOrderReporting";
 import { type Nivel, NivelPill } from "../_components/nivel";
 import {
   Aviso,
@@ -31,6 +33,7 @@ import {
   formatVeces,
   KpiCard,
   type LineaCascada,
+  NotaSinHistorial,
   PanelCard,
   PanelError,
   PanelSkeleton,
@@ -47,27 +50,10 @@ import {
 } from "../_lib/periodo";
 import type { PublicidadConectada } from "../_lib/publicidad";
 import type { Resultados } from "../_lib/resultados";
+import { type CoberturaFlete, notaFlete } from "../_lib/servidor";
 import { useAdminContexto, useResultadosComparados } from "../_lib/useResultados";
-import { type PedidoAdmin, pagadoPedido } from "../_lib/ventas";
 
 // ---- Cálculos de la pantalla ------------------------------------------------------------------
-
-/** Estados cuyo pago no es un adelanto: ya es venta, se anuló, está incompleto o es un lead. */
-const ESTADOS_SIN_ADELANTO = new Set(["ENTREGADO", "ANULADO", "INCOMPLETE", "LEAD"]);
-
-/** Pagos registrados (PAID) de pedidos del periodo que todavía no son venta (FEAT-34 M1). */
-function adelantosPendientes(pedidos: PedidoAdmin[]): { monto: number; pedidos: number } {
-  let monto = 0;
-  let cantidad = 0;
-  for (const pedido of pedidos) {
-    if (!isCommercialSale(pedido) || ESTADOS_SIN_ADELANTO.has(pedido.status ?? "")) continue;
-    const pagado = pagadoPedido(pedido);
-    if (pagado <= 0) continue;
-    monto += pagado;
-    cantidad += 1;
-  }
-  return { monto, pedidos: cantidad };
-}
 
 const plural = (n: number, uno: string, varios: string) =>
   `${formatNumber(n)} ${n === 1 ? uno : varios}`;
@@ -99,7 +85,9 @@ function lineasCascada(
   r: Resultados,
   publicidad: PublicidadConectada,
   igvPct: number,
+  flete: CoberturaFlete,
 ): LineaCascada[] {
+  const nota = notaFlete(flete);
   return [
     { clave: "ventas", etiqueta: "Ventas (con IGV)", monto: r.ventas, signo: "+" },
     {
@@ -131,11 +119,11 @@ function lineasCascada(
     { clave: "comisiones", etiqueta: "Comisiones de canal", monto: r.comisiones, signo: "−" },
     {
       clave: "envios",
-      etiqueta: "Envíos (cotización de courier)",
+      etiqueta: "Envíos (flete por pedido)",
       monto: r.envios,
       signo: "−",
-      nota: "Por ahora solo suma la cotización de las guías de Shalom",
-      notaTono: "info",
+      nota: nota?.texto,
+      notaTono: nota?.baja ? "aviso" : "info",
     },
     {
       clave: "publicidad",
@@ -317,14 +305,7 @@ export default function ResumenAdminPage() {
   const { actual, anterior, rangoAnterior } = useResultadosComparados(fromDate, toDate);
   const [metas] = useMetasAnuales(companyId, partes(fromDate)[0]);
 
-  const adelantos = useMemo(() => adelantosPendientes(actual.pedidos), [actual.pedidos]);
-  const pedidosEnCurso = useMemo(
-    () =>
-      actual.pedidos.filter(
-        (p) => isCommercialSale(p) && p.status !== "ANULADO" && p.status !== "ENTREGADO",
-      ).length,
-    [actual.pedidos],
-  );
+  const { adelantos, pedidos: pedidosEnCurso } = actual.servidor.enCurso;
 
   if (actual.error) {
     return <PanelError error={actual.error instanceof Error ? actual.error : null} />;
@@ -356,6 +337,7 @@ export default function ResumenAdminPage() {
   return (
     <div className="space-y-3.5">
       <AvisoCostos costo={r.costo} />
+      <NotaSinHistorial cantidad={actual.servidor.calidad.entregasSinHistorial} />
       {r.pedidos === 0 && pedidosEnCurso > 0 && (
         <Aviso tono="info" titulo="Todavía no hay ventas en el periodo">
           Hay {plural(pedidosEnCurso, "pedido", "pedidos")} en curso. En contra entrega la venta
@@ -404,7 +386,7 @@ export default function ResumenAdminPage() {
           subtitulo="De las ventas entregadas a la utilidad operativa. Los % son sobre las ventas con IGV."
         >
           <TablaCascada
-            lineas={lineasCascada(r, actual.publicidad, igvPct)}
+            lineas={lineasCascada(r, actual.publicidad, igvPct, actual.flete)}
             base={r.ventas}
             caption="Estado de resultados del periodo"
           />
@@ -533,7 +515,7 @@ export default function ResumenAdminPage() {
 
           <PanelCard
             titulo="Adelantos de pedidos aún no entregados"
-            subtitulo="Pagos registrados de pedidos del periodo que todavía no son venta"
+            subtitulo="Pagos registrados de pedidos creados en el periodo que todavía no se entregan"
           >
             <dl>
               <Dato

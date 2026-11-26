@@ -86,7 +86,7 @@ function anual(porMes: Record<number, Resultados>, gastosCrudos: ReturnType<type
     hasta,
     meses,
     total: res({}),
-    pedidos: [],
+    flete: { monto: 0, conFlete: 0, entregas: 0, cobertura: null },
     gastosCrudos,
     publicidad: PUBLICIDAD,
     cargando: false,
@@ -145,6 +145,19 @@ describe("Flujo de caja", () => {
 
     expect(screen.getByText(/No se resta el costo de lo vendido/)).toBeInTheDocument();
     expect(screen.queryByText("gasto de anuncios embebido")).not.toBeInTheDocument();
+  });
+
+  it("los envíos son el flete por pedido y avisa si se conoce en pocas entregas del año", () => {
+    mockAnuales.mockReturnValue({
+      ...anual({ 1: res({ ventas: 1000, envios: 50 }) }, []),
+      flete: { monto: 50, conFlete: 3, entregas: 50, cobertura: 0.06 },
+    });
+    render(<FlujoDeCajaPage />);
+    expect(
+      screen.getByText(
+        "Envíos = flete por pedido. Flete conocido en 3 de 50 entregas: el resto no suma envío, así que la utilidad sale sobreestimada.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("no revienta sin datos y avisa que faltan las compras de mercadería", () => {

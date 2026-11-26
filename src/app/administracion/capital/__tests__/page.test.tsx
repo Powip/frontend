@@ -46,7 +46,7 @@ const anual = (total: Resultados) => ({
   hasta: "2026-11-26",
   meses: [],
   total,
-  pedidos: [],
+  flete: { monto: 0, conFlete: 0, entregas: 0, cobertura: null },
   gastosCrudos: [],
   publicidad: { estado: "ok" },
   cargando: false,

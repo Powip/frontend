@@ -7,7 +7,7 @@
  * − Merma
  * = Utilidad bruta
  * − Comisiones de canal (fee marketplace del pedido)
- * − Envíos (cotización de courier)
+ * − Envíos (flete por pedido, D9: solo de las entregas que lo tienen; se avisa en cuántas se conoce)
  * − Publicidad (consumo conectado + Gastos › Publicidad)
  * = Contribución
  * − Gastos fijos (planilla, herramientas, courier propio, otros), repartidos por días del periodo
