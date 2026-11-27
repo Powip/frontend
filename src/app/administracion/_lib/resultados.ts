@@ -10,7 +10,7 @@
  * − Envíos (flete por pedido, D9: solo de las entregas que lo tienen; se avisa en cuántas se conoce)
  * − Publicidad (consumo conectado + Gastos › Publicidad)
  * = Contribución
- * − Gastos fijos (planilla, herramientas, courier propio, otros), repartidos por días del periodo
+ * − Gastos fijos (planilla, herramientas, implementos, courier propio, otros), repartidos por días del periodo
  * = Utilidad operativa
  *
  * Decisiones de Octa (25-11-2026): sin «IGV/IR estimado» ni comisión Powip (D3, D4); gastos mensuales repartidos por
@@ -21,12 +21,13 @@ import type { CategoriaGasto, IGastoOperativo } from "@/interfaces/IAdmin";
 import { type DiaKey, diasEntre, maxDia, mesesDelPeriodo, minDia, aDiaKey, diasDelMes } from "./periodo";
 import type { ResumenVentas } from "./ventas";
 
-export const CATEGORIAS_FIJAS = ["PLANILLA", "HERRAMIENTAS", "COURIER_PROPIO", "OTRO"] as const;
+export const CATEGORIAS_FIJAS = ["PLANILLA", "HERRAMIENTAS", "IMPLEMENTOS", "COURIER_PROPIO", "OTRO"] as const;
 export type CategoriaFija = (typeof CATEGORIAS_FIJAS)[number];
 
 export const NOMBRE_CATEGORIA: Record<CategoriaGasto, string> = {
   PLANILLA: "Planilla",
   HERRAMIENTAS: "Herramientas",
+  IMPLEMENTOS: "Implementos",
   PUBLICIDAD: "Publicidad",
   COURIER_PROPIO: "Courier propio",
   OTRO: "Otros",
@@ -54,6 +55,7 @@ export interface ProrrateoGastos {
 const categoriasEnCero = (): Record<CategoriaGasto, number> => ({
   PLANILLA: 0,
   HERRAMIENTAS: 0,
+  IMPLEMENTOS: 0,
   PUBLICIDAD: 0,
   COURIER_PROPIO: 0,
   OTRO: 0,
