@@ -7,6 +7,7 @@ import {
 } from "../enums/sunat-document.enums";
 import type { SunatDocument, SunatDocumentItem } from "../models/sunat-document.model";
 import type { CreateSunatDocumentsFormValues } from "../schemas/create-sunat-documents.schema";
+import { countsAsIssued } from "./counts-as-issued";
 import { isGiftTaxType } from "./gift-lines";
 
 /**
@@ -15,7 +16,6 @@ import { isGiftTaxType } from "./gift-lines";
  * and find-active-document-for-order.ts).
  */
 
-const ACTIVE_STATUSES: readonly string[] = ["PENDING", "ACCEPTED", "ACCEPTED_WITH_OBSERVATION"];
 const ACCEPTED_STATUSES: readonly string[] = ["ACCEPTED", "ACCEPTED_WITH_OBSERVATION"];
 const CENT = 0.01;
 
@@ -41,7 +41,7 @@ function creditNotesOf(document: SunatDocument, documents: readonly SunatDocumen
   return documents.filter(
     (note) =>
       note.taxDocumentType === SUNAT_DOCUMENT_TYPES.CREDIT_NOTE &&
-      ACTIVE_STATUSES.includes(note.cdrStatus) &&
+      countsAsIssued(note) &&
       note.referenceDocumentId === document.id,
   );
 }
@@ -55,7 +55,7 @@ export function isDocumentInForce(
   document: SunatDocument,
   documents: readonly SunatDocument[],
 ): boolean {
-  if (!isInvoiceOrReceipt(document) || !ACTIVE_STATUSES.includes(document.cdrStatus)) {
+  if (!isInvoiceOrReceipt(document) || !countsAsIssued(document)) {
     return false;
   }
 
@@ -84,7 +84,7 @@ export function findOpenPrepayments(orderDocuments: readonly SunatDocument[]): S
   return orderDocuments.filter(
     (document) =>
       isPrepaymentDocument(document) &&
-      ACTIVE_STATUSES.includes(document.cdrStatus) &&
+      countsAsIssued(document) &&
       creditNotesOf(document, orderDocuments).length === 0 &&
       !isDeductedByFinal(document, orderDocuments),
   );

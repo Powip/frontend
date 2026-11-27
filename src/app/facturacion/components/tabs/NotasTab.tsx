@@ -1,8 +1,9 @@
 "use client";
 
-import { FileMinus, Loader2, Plus, Printer } from "lucide-react";
+import { Ban, FileMinus, Loader2, Plus, Printer } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { DarDeBajaModal } from "@/app/facturacion/components/modals/DarDeBajaModal";
 import {
   formatNotaFecha,
   getNotaEstado,
@@ -23,6 +24,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { SunatDocument } from "@/features/sunat/sunat-document/models/sunat-document.model";
+import {
+  formatVoidDeadline,
+  getVoidStatusBadge,
+} from "@/features/sunat/sunat-document/utils/void-status";
 
 interface NotasTabProps {
   /** Notas de crédito reales (tipo 07) guardadas en el backend, más nuevas primero. */
@@ -43,6 +48,7 @@ export function NotasTab({
   onImprimir,
 }: NotasTabProps) {
   const [printingId, setPrintingId] = useState<string | null>(null);
+  const [bajaNota, setBajaNota] = useState<SunatDocument | null>(null);
 
   const imprimir = async (nota: SunatDocument) => {
     setPrintingId(nota.id);
@@ -112,6 +118,7 @@ export function NotasTab({
                   notas.map((nota) => {
                     const estado = getNotaEstado(nota);
                     const numero = getNotaNumero(nota);
+                    const baja = getVoidStatusBadge(nota);
 
                     return (
                       <TableRow key={nota.id}>
@@ -136,31 +143,66 @@ export function NotasTab({
                         </TableCell>
 
                         <TableCell>
-                          <Badge className={estado.className} title={estado.detalle}>
-                            {estado.label}
-                          </Badge>
+                          <div className="flex flex-wrap items-center gap-1">
+                            <Badge className={estado.className} title={estado.detalle}>
+                              {estado.label}
+                            </Badge>
+                            {baja && (
+                              <Badge
+                                className={baja.className}
+                                title={baja.detalle}
+                                data-testid={`baja-estado-${nota.id}`}
+                              >
+                                {baja.label}
+                              </Badge>
+                            )}
+                          </div>
+                          {nota.voidStatus === "REJECTED" && baja?.detalle && (
+                            <p className="mt-1 max-w-56 text-[11px] text-red-600 dark:text-red-400">
+                              {baja.detalle}
+                            </p>
+                          )}
                         </TableCell>
 
                         <TableCell className="text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 gap-1 text-xs"
-                            onClick={() => imprimir(nota)}
-                            disabled={!isNotaImprimible(nota) || printingId === nota.id}
-                            title={
-                              isNotaImprimible(nota)
-                                ? `Imprimir PDF de ${numero}`
-                                : "Disponible cuando SUNAT acepte la nota"
-                            }
-                          >
-                            {printingId === nota.id ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Printer className="h-3.5 w-3.5" />
+                          <div className="flex flex-col items-end gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 gap-1 text-xs"
+                              onClick={() => imprimir(nota)}
+                              disabled={!isNotaImprimible(nota) || printingId === nota.id}
+                              title={
+                                isNotaImprimible(nota)
+                                  ? `Imprimir PDF de ${numero}`
+                                  : "Disponible cuando SUNAT acepte la nota"
+                              }
+                            >
+                              {printingId === nota.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Printer className="h-3.5 w-3.5" />
+                              )}
+                              Imprimir PDF
+                            </Button>
+                            {nota.voidable && (
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 gap-1 border-red-200 text-xs text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950"
+                                  onClick={() => setBajaNota(nota)}
+                                  data-testid={`dar-de-baja-${nota.id}`}
+                                >
+                                  <Ban className="h-3.5 w-3.5" />
+                                  Dar de baja
+                                </Button>
+                                <span className="text-[10px] text-muted-foreground">
+                                  Plazo hasta {formatVoidDeadline(nota.voidDeadline)}
+                                </span>
+                              </>
                             )}
-                            Imprimir PDF
-                          </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -171,6 +213,8 @@ export function NotasTab({
           </div>
         </CardContent>
       </Card>
+
+      {bajaNota && <DarDeBajaModal document={bajaNota} onClose={() => setBajaNota(null)} />}
     </div>
   );
 }

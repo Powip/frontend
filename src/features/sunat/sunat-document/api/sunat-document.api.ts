@@ -88,3 +88,20 @@ export async function createSunatDocumentsBulkPdfZipApi(
     filename: extractFilename(response.headers["content-disposition"]),
   };
 }
+
+export interface VoidSunatDocumentsRequestDto {
+  documentIds: string[];
+  reason: string;
+}
+
+/** Comunicación de baja (RA): SUNAT answers later; the documents come back "Baja en proceso". */
+export async function voidSunatDocumentsApi(
+  requestDto: VoidSunatDocumentsRequestDto,
+): Promise<SunatDocumentResponseDto[]> {
+  const { data } = await axiosAuth.post<SunatDocumentResponseDto[]>(
+    `${API.sunat}/api/v1/sunat-documents/void`,
+    requestDto,
+  );
+
+  return data;
+}

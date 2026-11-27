@@ -18,6 +18,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ALL_ISSUERS } from "@/app/facturacion/components/IssuerFilterSelect";
 import { IssuerLabel } from "@/app/facturacion/components/IssuerLabel";
+import { DarDeBajaModal } from "@/app/facturacion/components/modals/DarDeBajaModal";
 import DetalleComprobanteModal from "@/app/facturacion/components/modals/DetalleComprobanteModal";
 import EmitirComprobanteModal from "@/app/facturacion/components/modals/EmitirComprobanteModal";
 import LoteEmisionModal from "@/app/facturacion/components/modals/LoteEmisionModal";
@@ -67,12 +68,17 @@ import {
   useSendTaxDocumentWhatsApp,
   useTaxDocumentWhatsAppAvailability,
 } from "@/features/sunat/sunat-document/hooks/use-tax-document-whatsapp";
+import type { SunatDocument } from "@/features/sunat/sunat-document/models/sunat-document.model";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 import { documentNumberOf, grandTotalOf } from "@/features/sunat/sunat-document/utils/prepayments";
 import {
   computeTaxDocumentKpis,
   filterRowsByIssuerRuc,
 } from "@/features/sunat/sunat-document/utils/tax-document-kpis";
+import {
+  formatVoidDeadline,
+  getVoidStatusBadge,
+} from "@/features/sunat/sunat-document/utils/void-status";
 import { useSunatIssuerAccessBlocks } from "@/features/sunat/sunat-issuer-access/hooks/use-sunat-issuer-access-blocks";
 import { getIssuerAccessState } from "@/features/sunat/sunat-issuer-access/utils/issuer-access-status";
 import { useSunatProfiles } from "@/features/sunat/sunat-profile/hooks/use-sunat-profiles";
@@ -260,6 +266,7 @@ export function TaxDocumentsTab({
   const [emitirRow, setEmitirRow] = useState<TaxDocumentRow | null>(null);
   const [detalleRow, setDetalleRow] = useState<TaxDocumentRow | null>(null);
   const [rechazadoRow, setRechazadoRow] = useState<TaxDocumentRow | null>(null);
+  const [bajaDocument, setBajaDocument] = useState<SunatDocument | null>(null);
   const [loteOpen, setLoteOpen] = useState(false);
 
   const filteredRows = useMemo(() => {
@@ -585,12 +592,32 @@ export function TaxDocumentsTab({
         );
 
       case "ACCEPTED":
-      case "ACCEPTED_WITH_OBSERVATION":
+      case "ACCEPTED_WITH_OBSERVATION": {
+        const taxDocument = row.taxDocument;
         return (
-          <Button size="sm" variant="outline" onClick={() => setDetalleRow(row)}>
-            Ver / Compartir
-          </Button>
+          <div className="flex flex-col items-end gap-1">
+            <Button size="sm" variant="outline" onClick={() => setDetalleRow(row)}>
+              Ver / Compartir
+            </Button>
+            {taxDocument?.voidable && (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950"
+                  onClick={() => setBajaDocument(taxDocument)}
+                  data-testid={`dar-de-baja-${taxDocument.id}`}
+                >
+                  Dar de baja
+                </Button>
+                <span className="text-[10px] text-muted-foreground">
+                  Plazo hasta {formatVoidDeadline(taxDocument.voidDeadline)}
+                </span>
+              </>
+            )}
+          </div>
         );
+      }
 
       case "REJECTED":
       case "RETRY_EXCEEDED":
@@ -944,6 +971,16 @@ export function TaxDocumentsTab({
                           ) : (
                             getStatusBadge(status)
                           )}
+                          {taxDocument && getVoidStatusBadge(taxDocument) && (
+                            <div className="mt-1">
+                              <Badge
+                                className={getVoidStatusBadge(taxDocument)?.className}
+                                title={getVoidStatusBadge(taxDocument)?.detalle}
+                              >
+                                {getVoidStatusBadge(taxDocument)?.label}
+                              </Badge>
+                            </div>
+                          )}
                         </TableCell>
 
                         <TableCell className="text-center">{getDistributionIcons(row)}</TableCell>
@@ -1018,6 +1055,11 @@ export function TaxDocumentsTab({
         row={rechazadoRow}
         onReintentar={(row) => setEmitirRow(row)}
       />
+
+      {/* Comunicación de baja */}
+      {bajaDocument && (
+        <DarDeBajaModal document={bajaDocument} onClose={() => setBajaDocument(null)} />
+      )}
 
       {/* Bulk emission */}
       <LoteEmisionModal
