@@ -109,7 +109,7 @@ export function ActivateRuleDialog({
                           Hoy hay{" "}
                           <strong>{data.matchingOrders.toLocaleString("es-PE")} pedidos</strong> que
                           ya están en {data.orderStateLabel ?? "este estado"} y cumplen esta regla.
-                          {formatCost(data) && (
+                          {!request.rule.manualSend && formatCost(data) && (
                             <>
                               {" "}
                               Enviarles ahora costaría <strong>{formatCost(data)}</strong> (lo cobra
@@ -142,7 +142,9 @@ export function ActivateRuleDialog({
                       {
                         value: "existing",
                         label: existingLabel,
-                        hint: "Se envían respetando el horario permitido.",
+                        hint: request.rule.manualSend
+                          ? "Quedan en la bandeja de envío asistido para enviarlos a mano."
+                          : "Se envían respetando el horario permitido.",
                         disabled: !existingAvailable,
                       },
                     ] as const

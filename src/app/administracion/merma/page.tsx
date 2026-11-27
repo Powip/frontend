@@ -7,7 +7,8 @@
  *   (no manda `inventoryItemId`).
  * - Los totales del periodo son los del resumen del backend (Σ cantidad × costo − recuperado), el mismo número que
  *   resta la línea «Merma» del Resumen. Si el resumen no llega, se suman las filas de la lista.
- * - Las mermas que se piden en Almacén van como ajuste de inventario y todavía no llegan a esta tabla (Fase 2).
+ * - Las mermas que se aprueban en Almacén (ajuste de inventario de tipo merma) llegan solas a esta tabla desde el
+ *   deploy de la Fase 2 (26-11-2026); las anteriores no se rellenaron.
  */
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -258,7 +259,8 @@ export default function MermaPage() {
   return (
     <div className="space-y-3.5">
       <Aviso tono="info">
-        Las mermas que se registran en Almacén (ajustes de inventario) todavía no llegan acá; se conectan en la Fase 2.
+        Las mermas que se aprueban en Almacén (ajustes de inventario) llegan solas a esta lista desde el 26 de noviembre
+        de 2026; las anteriores no están.
       </Aviso>
 
       {cargando ? (

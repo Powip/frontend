@@ -1,58 +1,32 @@
-"use client";
-
 /**
- * Cuentas por cobrar y pagar (FEAT-34: C7, M8).
+ * Cuentas por cobrar y pagar (FEAT-34: C7, M8, Fase 3).
  *
- * - Lo manual (cuentas por cobrar, por pagar y el historial de lo que se marcó como cobrado o pagado) vive en
- *   localStorage por empresa: solo en este navegador. La Fase 3 lo pasa al backend o lo retira (D6).
+ * - Lo manual (cuentas por cobrar y por pagar, y las ya cobradas o pagadas) se guarda en el servidor desde la Fase 3
+ *   (`ventas.admin_cuentas`, hooks en `datosServidor.ts`), con el vencimiento como fecha.
  * - El saldo en calle por courier llega calculado de ms-ventas (`usePedidosEnTransito`, una fila por grafía de courier);
  *   acá solo se juntan las grafías de un mismo courier.
- *
- * Ya no hay «vencidas» ni «próximas a vencer»: el vencimiento es texto libre y esas secciones salían siempre vacías.
  */
 
-import type { CourierEnTransito } from "@/interfaces/IAdministracion";
-import { useLocalStorageState } from "./useLocalStorage";
+import type { CourierEnTransito, CuentaServidor } from "@/interfaces/IAdministracion";
+import type { DiaKey } from "./periodo";
 
-export interface CuentaManual {
-  id: string;
-  concepto: string;
-  descripcion: string;
-  monto: number;
-  /** Texto libre («Vence 30 de mayo», «A fin de mes»…). No es una fecha. */
-  vencimiento: string;
-  /** Campos de la versión anterior; se conservan en lo ya guardado y no se usan. */
-  icono?: string;
-  urgencia?: "rojo" | "ambar" | "azul";
-  auto?: boolean;
+/** Pendientes (sin `saldadaEn`) de un lado, las que vencen primero arriba (sin vencimiento al final). */
+export function cuentasAbiertas(cuentas: readonly CuentaServidor[] | undefined, lado: CuentaServidor["lado"]) {
+  return (cuentas ?? [])
+    .filter((c) => c.lado === lado && !c.saldadaEn)
+    .sort((a, b) => (a.vence ?? "9999").localeCompare(b.vence ?? "9999") || a.creadoEn.localeCompare(b.creadoEn));
 }
 
-export type TipoMovimiento = "ingreso" | "egreso";
-
-export interface MovimientoHistorial {
-  id: string;
-  /** `YYYY-MM` (hora Lima). */
-  mes: string;
-  tipo: TipoMovimiento;
-  concepto: string;
-  monto: number;
+/** Ya cobradas o pagadas, la más reciente arriba. */
+export function cuentasSaldadas(cuentas: readonly CuentaServidor[] | undefined) {
+  return (cuentas ?? [])
+    .filter((c) => !!c.saldadaEn)
+    .sort((a, b) => (b.saldadaEn ?? "").localeCompare(a.saldadaEn ?? "") || b.creadoEn.localeCompare(a.creadoEn));
 }
 
-const kCobrar = (companyId: string) => `powip:admin:cuentas-cobrar:${companyId || "anon"}`;
-const kPagar = (companyId: string) => `powip:admin:cuentas-pagar:${companyId || "anon"}`;
-const kHistorial = (companyId: string) => `powip:admin:cuentas-historial:${companyId || "anon"}`;
-
-export function useCuentasManualCobrar(companyId: string) {
-  return useLocalStorageState<CuentaManual[]>(kCobrar(companyId), []);
-}
-
-export function useCuentasManualPagar(companyId: string) {
-  return useLocalStorageState<CuentaManual[]>(kPagar(companyId), []);
-}
-
-export function useCuentasHistorial(companyId: string) {
-  return useLocalStorageState<MovimientoHistorial[]>(kHistorial(companyId), []);
-}
+/** Una cuenta pendiente con vencimiento anterior a hoy. */
+export const estaVencida = (cuenta: Pick<CuentaServidor, "vence" | "saldadaEn">, hoy: DiaKey | string) =>
+  !cuenta.saldadaEn && !!cuenta.vence && cuenta.vence < hoy;
 
 export function totalCuentas(cuentas: { monto: number }[] | null | undefined): number {
   return (cuentas ?? []).reduce((s, c) => s + (Number(c.monto) || 0), 0);

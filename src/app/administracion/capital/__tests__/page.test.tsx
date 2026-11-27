@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { type ApiFalsa, renderConServidor } from "../../_lib/__tests__/servidor-falso";
 import { calcularResultados, type Resultados } from "../../_lib/resultados";
 import CapitalRoiPage from "../page";
 
@@ -12,6 +13,11 @@ jest.mock("../../_lib/useResultados", () => ({
   useResultadosAnuales: (...args: unknown[]) => mockAnuales(...args),
 }));
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
+jest.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => ({ auth: { company: { id: "c-capital" }, accessToken: "t" } }),
+}));
+jest.mock("@/api/Administracion", () => jest.requireActual("../../_lib/__tests__/servidor-falso").crearApiFalsa());
+const servidor = jest.requireMock<ApiFalsa>("@/api/Administracion");
 
 function res(ventas: number, costo: number, fijos: number): Resultados {
   return calcularResultados({
@@ -53,39 +59,50 @@ const anual = (total: Resultados) => ({
   error: null,
 });
 
-function registrar(datos: Record<string, string>) {
-  fireEvent.click(screen.getByRole("button", { name: /Registrar capital/ }));
+async function registrar(datos: Record<string, string>) {
+  fireEvent.click(await screen.findByRole("button", { name: /Registrar capital/ }));
   for (const [label, value] of Object.entries(datos)) {
     fireEvent.change(screen.getByLabelText(label), { target: { value } });
   }
   fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+  await waitFor(() => expect(screen.queryByRole("form", { name: "Registrar capital" })).not.toBeInTheDocument());
 }
 
 beforeEach(() => {
   window.localStorage.clear();
+  servidor.__reiniciar();
   mockAnuales.mockReset();
   // Utilidad operativa 2026 a la fecha: 10.000 − 4.000 − 2.700 = 3.300.
   mockAnuales.mockReturnValue(anual(res(10000, 4000, 2700)));
 });
 
 describe("Capital y ROI", () => {
-  it("usa la utilidad del año del periodo y no suma la utilidad reinvertida al capital", () => {
-    render(<CapitalRoiPage />);
+  it("usa la utilidad del año del periodo y no suma la utilidad reinvertida al capital", async () => {
+    renderConServidor(<CapitalRoiPage />);
     expect(mockAnuales).toHaveBeenCalledWith(2026);
     expect(screen.getByRole("region", { name: "Utilidad operativa 2026" })).toHaveTextContent("S/ 3,300");
     expect(screen.getByRole("region", { name: "ROI" })).toHaveTextContent("—");
 
-    registrar({ Descripción: "Aporte inicial", "Monto (S/)": "10000" });
-    registrar({ Tipo: "Utilidad reinvertida", Descripción: "Ganancia 2025", "Monto (S/)": "5000" });
+    await registrar({ Descripción: "Aporte inicial", "Monto (S/)": "10000" });
+    await registrar({ Tipo: "Utilidad reinvertida", Descripción: "Ganancia 2025", "Monto (S/)": "5000" });
 
+    // Se guarda en el servidor con el tipo del servidor, nunca en el navegador.
+    expect(servidor.crearCapital).toHaveBeenCalledWith({
+      tipo: "capital_propio",
+      descripcion: "Aporte inicial",
+      monto: 10000,
+      tienda: "Consolidado",
+    });
+    expect(servidor.__capital().map((c) => c.tipo)).toEqual(["capital_propio", "utilidad_reinvertida"]);
+    expect(window.localStorage.length).toBe(0);
     expect(screen.getByRole("region", { name: "Capital invertido" })).toHaveTextContent("S/ 10,000");
     expect(screen.getByRole("region", { name: "ROI" })).toHaveTextContent("33.0%");
     expect(screen.getByText("Utilidad reinvertida: S/ 5,000")).toBeInTheDocument();
   });
 
-  it("préstamo con TEA: tasa mensual compuesta, cuotas desde el día local y una tabla por préstamo", () => {
-    render(<CapitalRoiPage />);
-    registrar({
+  it("préstamo con TEA: tasa mensual compuesta, cuotas desde el día local y una tabla por préstamo", async () => {
+    renderConServidor(<CapitalRoiPage />);
+    await registrar({
       Tipo: "Préstamo",
       Descripción: "BCP",
       "Monto (S/)": "12000",
@@ -100,7 +117,7 @@ describe("Capital y ROI", () => {
     expect(within(tabla).getByText("31 mar 2026")).toBeInTheDocument();
     expect(within(tabla).getAllByRole("row")).toHaveLength(13);
 
-    registrar({
+    await registrar({
       Tipo: "Préstamo",
       Descripción: "Caja Piura",
       "Monto (S/)": "6000",
@@ -114,13 +131,39 @@ describe("Capital y ROI", () => {
     expect(screen.getByRole("region", { name: "Capital invertido" })).toHaveTextContent("S/ 18,000");
 
     fireEvent.click(screen.getAllByRole("button", { name: /Pagar cuota 1/ })[0]);
-    expect(within(tabla).getByText("Pagada")).toBeInTheDocument();
+    await waitFor(() => expect(within(screen.getByRole("table", { name: "Cuotas del préstamo BCP" })).getByText("Pagada")).toBeInTheDocument());
+    const bcp = servidor.__capital().find((c) => c.descripcion === "BCP");
+    expect(bcp).toMatchObject({ tipo: "prestamo", teaPct: 12.68, plazoCuotas: 12, fechaInicio: "2026-01-31", cuotasPagadas: 1 });
+    expect(servidor.actualizarCapital).toHaveBeenCalledWith(bcp?.id, { cuotasPagadas: 1 });
   });
 
-  it("no revienta sin datos", () => {
+  it("muestra lo que otro usuario ya registró (viene del servidor)", async () => {
+    servidor.__ponerCapital([
+      {
+        id: "x1",
+        tipo: "aumento_capital",
+        descripcion: "Socio nuevo",
+        monto: 4000,
+        tienda: null,
+        teaPct: null,
+        plazoCuotas: null,
+        cuotaMensual: null,
+        fechaInicio: null,
+        cuotasPagadas: 0,
+        creadoEn: "2026-11-20T10:00:00",
+      },
+    ]);
+    renderConServidor(<CapitalRoiPage />);
+    expect(await screen.findByText("Aumento de capital")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Capital invertido" })).toHaveTextContent("S/ 4,000");
+    fireEvent.click(screen.getByRole("button", { name: "Eliminar Aumento de capital: Socio nuevo" }));
+    await waitFor(() => expect(servidor.__capital()).toHaveLength(0));
+  });
+
+  it("no revienta sin datos", async () => {
     mockAnuales.mockReturnValue(anual(res(0, 0, 0)));
-    render(<CapitalRoiPage />);
-    expect(screen.getByText("Todavía no registraste capital")).toBeInTheDocument();
+    renderConServidor(<CapitalRoiPage />);
+    expect(await screen.findByText("Todavía no registraste capital")).toBeInTheDocument();
     expect(screen.getByText("Sin préstamos registrados")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Tiempo de recupero" })).toHaveTextContent("—");
   });

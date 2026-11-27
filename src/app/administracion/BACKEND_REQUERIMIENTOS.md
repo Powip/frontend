@@ -37,13 +37,14 @@
    CANCELADA ni FALLIDA (hoy `shipping-guides/cost` solo suma Shalom e incluye anuladas).
 6. **Merma**: que las mermas aprobadas en Almacén (ajustes `kind: 'merma'`) lleguen a `inventory_shrinkage`.
 
-## Fase 3 — lo que todavía vive en el navegador
+## Fase 3 — hecho (27-11-2026)
 
-- Metas anuales (`_lib/metasStorage.ts`) → backend. `ventas.panel_metas` no tiene metas anuales de ventas, utilidad
-  ni margen: hay que agregarlas.
-- Retirar la inversión manual de publicidad (`_lib/pautaStorage.ts`, D2). Ya no entra en ningún cálculo.
-- Capital y ROI, cuentas por pagar y objetivos diarios por canal (`capitalStorage`, `cuentasStorage`,
-  `objetivoStorage`): fuera del menú hasta tener backend (D6).
+- Metas anuales y objetivos diarios por canal → `ventas.panel_metas` (tipos `admin_anual`, `admin_objetivo_dia`).
+- Capital y cuentas → `ventas.admin_capital` y `ventas.admin_cuentas` (migración `1796400000000-AdministracionDatos`).
+- `POST /administracion/importar-local`: el aviso del layout sube una vez lo que quedó en cada navegador.
+- `GET /administracion/compras`: compras de inventario pagadas (Flujo de caja, Gastos) y por pagar (Cuentas).
+- `enCurso.monto` en `/administracion/resultados`: ventas en curso (sin entregar) en el Resumen.
+- Se retiró la inversión manual de publicidad (D2, P6). Cuentas volvió al menú (Caja).
 
 ## Seguridad (fuera de alcance, lista de FEAT-23)
 

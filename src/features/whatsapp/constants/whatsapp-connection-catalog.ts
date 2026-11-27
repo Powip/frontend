@@ -19,8 +19,15 @@ export interface ConnectionTypeDefinition {
   advantages: string[];
   limitations: string[];
   statusLabel: string;
-  changeEffect: string;
 }
+
+/** What an app-only number cannot do. Shown wherever the person chooses or sees that type. */
+export const APP_ONLY_LIMITATIONS = [
+  "No envía solo: una persona abre cada mensaje y toca «Enviar».",
+  "No recibe mensajes en Powip.",
+  "Sin Bandeja ni Pau.",
+  "Sin estados entregado ni leído.",
+];
 
 export const CONNECTION_TYPE_DEFINITIONS: ConnectionTypeDefinition[] = [
   {
@@ -31,8 +38,6 @@ export const CONNECTION_TYPE_DEFINITIONS: ConnectionTypeDefinition[] = [
     advantages: ["Envío automático y programado.", "Estados enviado, entregado y leído."],
     limitations: ["Ese número deja de funcionar en la app del celular."],
     statusLabel: "Conectado · API oficial",
-    changeEffect:
-      "Hay que conectar un número dedicado con Meta. El número deja de funcionar en la app del celular.",
   },
   {
     value: WHATSAPP_CONNECTION_TYPES.COEXISTENCE,
@@ -49,19 +54,16 @@ export const CONNECTION_TYPE_DEFINITIONS: ConnectionTypeDefinition[] = [
       "Requiere app v2.24.17 o superior.",
     ],
     statusLabel: "Conectado · API + app Business",
-    changeEffect:
-      "Hay que volver a conectar el número con Meta eligiendo la opción de la app WhatsApp Business.",
   },
   {
     value: WHATSAPP_CONNECTION_TYPES.APP_MANUAL,
     title: "Solo app WhatsApp Business",
-    badge: "Contingencia",
-    summary: "Número sin API. POWIP arma el mensaje; la asesora lo envía con un toque.",
-    advantages: ["Sin costo de Meta.", "Se mide quién abre el rastreo."],
-    limitations: ["Una persona debe tocar «Enviar».", "Sin estados entregado ni leído."],
-    statusLabel: "Solo envío asistido",
-    changeEffect:
-      "Los avisos dejarán de salir solos: tu equipo tendrá que enviarlos desde la bandeja de envío asistido.",
+    badge: "Envío manual",
+    summary:
+      "El número vive solo en la app del celular. Powip deja el mensaje escrito y una persona lo envía.",
+    advantages: ["Sin Meta ni costo por mensaje.", "El número sigue igual en el celular."],
+    limitations: APP_ONLY_LIMITATIONS,
+    statusLabel: "Solo app Business · envío manual",
   },
 ];
 
@@ -112,6 +114,13 @@ export const ASSISTED_STATUS_LABELS: Record<WhatsAppAssistedStatus, string> = {
   [WHATSAPP_ASSISTED_STATUSES.MARKED_SENT]: "Marcado como enviado",
   [WHATSAPP_ASSISTED_STATUSES.DISCARDED]: "Descartado",
 };
+
+/** «API + app»: el número sigue en el celular; no hay código por SMS. */
+export const COEX_SIGNUP_REQUIREMENTS = [
+  "El número ya en uso en la app WhatsApp Business del celular (versión 2.24.17 o superior).",
+  "Ese celular a mano para confirmar la conexión desde la app.",
+  "Un método de pago en Meta para el costo de los mensajes.",
+];
 
 export const SIGNUP_REQUIREMENTS = [
   "Un número que no esté usando la app de WhatsApp normal.",

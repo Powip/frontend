@@ -193,7 +193,7 @@ export function RuleCard({
   const headingId = useId();
   const readOnly = !canManage;
 
-    const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const handleSave = form.handleSubmit(async (formValues) => {
     if (!onSave || saving) return;
@@ -248,7 +248,8 @@ export function RuleCard({
     !!selectedTemplate.approvedVersion;
   const blockedMessage =
     rule.blockedReason ??
-    (selectedTemplate &&
+    (!rule.manualSend &&
+    selectedTemplate &&
     selectedTemplate.status !== WHATSAPP_TEMPLATE_STATUSES.APPROVED &&
     !keepsApprovedVersion
       ? `La plantilla ${selectedTemplate.name} está ${WHATSAPP_TEMPLATE_STATUS_LABELS[
@@ -339,6 +340,13 @@ export function RuleCard({
         </WaCallout>
       )}
 
+      {rule.manualSend && (
+        <WaCallout tone="amber" icon={Clock3} compact>
+          Se envía a mano: el número de la tienda es «Solo app». Cada aviso queda en la bandeja de
+          envío asistido.
+        </WaCallout>
+      )}
+
       {keepsApprovedVersion && selectedTemplate && (
         <WaCallout compact>
           Meta está revisando cambios de {selectedTemplate.name}; mientras tanto se sigue enviando
@@ -394,7 +402,10 @@ export function RuleCard({
                           <SelectItem
                             key={template.id}
                             value={template.id}
-                            disabled={template.status !== WHATSAPP_TEMPLATE_STATUSES.APPROVED}
+                            disabled={
+                              !rule.manualSend &&
+                              template.status !== WHATSAPP_TEMPLATE_STATUSES.APPROVED
+                            }
                           >
                             {template.name}
                             {template.status !== WHATSAPP_TEMPLATE_STATUSES.APPROVED &&
@@ -577,14 +588,14 @@ export function RuleCard({
               >
                 Descartar cambios
               </Button>
-                <BlockedActionButton
-                  className={waButton({ variant: "primary", size: "sm" })}
-                  blocked={!canPersist || !onSave || saving}
-                  blockedReasonId={persistenceNoteId}
-                  onClick={() => void handleSave()}
-                >
-                  {saving ? "Guardando…" : "Guardar cambios"}
-                </BlockedActionButton>
+              <BlockedActionButton
+                className={waButton({ variant: "primary", size: "sm" })}
+                blocked={!canPersist || !onSave || saving}
+                blockedReasonId={persistenceNoteId}
+                onClick={() => void handleSave()}
+              >
+                {saving ? "Guardando…" : "Guardar cambios"}
+              </BlockedActionButton>
             </div>
           )}
         </form>

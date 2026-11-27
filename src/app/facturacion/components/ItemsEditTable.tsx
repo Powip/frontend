@@ -207,7 +207,12 @@ export function ItemsEditTable({ taxRegime }: { taxRegime?: string } = {}) {
                 {!nuevoRus && <span className="font-normal text-muted-foreground">(sin IGV)</span>}
               </TableHead>
 
-              <TableHead className="w-24">Descuento</TableHead>
+              <TableHead className="w-24">
+                Descuento{" "}
+                <span className="block font-normal text-muted-foreground">
+                  {nuevoRus ? "(S/)" : "(S/ sin IGV)"}
+                </span>
+              </TableHead>
 
               <TableHead className="w-28 text-right">
                 Importe{" "}

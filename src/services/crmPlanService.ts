@@ -86,3 +86,19 @@ export async function disconnectChannelAccount(id: string): Promise<ChannelAccou
 export async function reconnectChannelAccount(id: string): Promise<ChannelAccount> {
   return (await axiosAuth.post<ChannelAccount>(`${CHANNELS}/${id}/reconnect`)).data;
 }
+
+/** Lo que borró «Eliminar»: la cuenta, sus chats con mensajes y archivos, y su conexión. */
+export interface DeletedChannelAccount {
+  id: string;
+  channel: string;
+  accountId: string;
+  deletedConversations: number;
+  deletedMessages: number;
+  deletedFiles: number;
+  connection: string;
+}
+
+/** Solo el dueño o administrador de la empresa. No se puede deshacer. */
+export async function deleteChannelAccount(id: string): Promise<DeletedChannelAccount> {
+  return (await axiosAuth.delete<DeletedChannelAccount>(`${CHANNELS}/${id}`)).data;
+}

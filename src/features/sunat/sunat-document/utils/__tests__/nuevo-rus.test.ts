@@ -2,6 +2,7 @@ import type { Order } from "@/features/sales/models/order";
 import { SUNAT_DOCUMENT_TYPES } from "../../enums/sunat-document.enums";
 import { buildSunatDocumentFromSale } from "../build-sunat-document-from-sale";
 import {
+  applyGiftMode,
   GIFT_MODES,
   getAllowedGiftModes,
   getCompanyPaidGiftIgv,
@@ -116,7 +117,8 @@ describe("buildSunatDocumentFromSale — emisor en Nuevo RUS", () => {
       NRUS,
     );
 
-    expect(document.items[1].referenceUnitValue).toBe(10);
+    const items = applyGiftMode(document.items, GIFT_MODES.PROMOCION);
+    expect(items[1].referenceUnitValue).toBe(10);
   });
 
   it("régimen general sigue igual: factura con IGV para cliente con RUC", () => {
@@ -143,7 +145,12 @@ describe("regalos — emisor en Nuevo RUS", () => {
     taxType: "10",
     giftOrigin: { unitPrice: 0, discountAmount: 0, taxType: "10" },
   } as never;
-  const product = { ...(gift as object), sku: "A", giftOrigin: undefined } as never;
+  const product = {
+    ...(gift as object),
+    sku: "A",
+    unitPrice: 59,
+    giftOrigin: undefined,
+  } as never;
 
   it("solo permite regalo de promoción (31); el 13 lleva IGV", () => {
     expect(getAllowedGiftModes([product, gift], "NUEVO_RUS")).toEqual([GIFT_MODES.PROMOCION]);

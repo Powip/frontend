@@ -12,12 +12,6 @@ import { useAdvertisingStoreFilter } from "./AdvertisingStoreFilterContext";
 import { advertisingPeriodFromParams } from "./advertising-period";
 import { advertisingSectionHref } from "./advertising-sections";
 
-const ManualAdvertisingPage = dynamic(
-  () => import("@/app/administracion/pauta/ManualAdvertisingPage"),
-  {
-    loading: () => <Skeleton className="h-48 w-full" />,
-  },
-);
 const MetaCatalogPanel = dynamic(
   () =>
     import("./AdvertisingMetaCatalogPanel").then((module) => module.AdvertisingMetaCatalogPanel),
@@ -201,7 +195,6 @@ function AdvertisingPageContent({ connectionsOnly = false, view }: PageProps) {
             }),
           )
         }
-        manualContent={!connectionsOnly ? <ManualAdvertisingPage /> : undefined}
       />
     </div>
   );

@@ -305,7 +305,7 @@ export default function ResumenAdminPage() {
   const { actual, anterior, rangoAnterior } = useResultadosComparados(fromDate, toDate);
   const [metas] = useMetasAnuales(companyId, partes(fromDate)[0]);
 
-  const { adelantos, pedidos: pedidosEnCurso } = actual.servidor.enCurso;
+  const { adelantos, pedidos: pedidosEnCurso, monto: montoEnCurso = 0 } = actual.servidor.enCurso;
 
   if (actual.error) {
     return <PanelError error={actual.error instanceof Error ? actual.error : null} />;
@@ -339,9 +339,10 @@ export default function ResumenAdminPage() {
       <AvisoCostos costo={r.costo} />
       <NotaSinHistorial cantidad={actual.servidor.calidad.entregasSinHistorial} />
       {r.pedidos === 0 && pedidosEnCurso > 0 && (
-        <Aviso tono="info" titulo="Todavía no hay ventas en el periodo">
-          Hay {plural(pedidosEnCurso, "pedido", "pedidos")} en curso. En contra entrega la venta
-          cuenta recién cuando el pedido se entrega.
+        <Aviso tono="info" titulo="Todavía no hay ventas entregadas en el periodo">
+          Hay {plural(pedidosEnCurso, "pedido", "pedidos")} en curso por {formatSoles(montoEnCurso)}. La venta cuenta
+          recién cuando el pedido se entrega: si tus pedidos no llegan a «Entregado», márcalos al confirmarse la
+          entrega para que aparezcan acá.
         </Aviso>
       )}
 
@@ -511,6 +512,22 @@ export default function ResumenAdminPage() {
                 </p>
               </div>
             )}
+          </PanelCard>
+
+          <PanelCard
+            titulo="Ventas en curso (sin entregar)"
+            subtitulo="Pedidos creados en el periodo que todavía no se entregan ni se anularon"
+          >
+            <dl>
+              <Dato
+                label="Monto en curso"
+                valor={formatSoles(montoEnCurso)}
+                sub={`${plural(pedidosEnCurso, "pedido creado", "pedidos creados")} en el periodo, sin leads (incluye incompletos)`}
+              />
+            </dl>
+            <p className="mt-2 text-[11px] text-pc-text-muted">
+              No suman a las ventas ni a la utilidad hasta que se entregan (una venta es un pedido entregado).
+            </p>
           </PanelCard>
 
           <PanelCard

@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * Capital y ROI (FEAT-34 M7). Fuera del menú hasta tener backend (D6): capital y préstamos viven solo en este
- * navegador (`_lib/capitalStorage.ts`).
+ * Capital y ROI (FEAT-34 M7). Desde la Fase 3 el capital y los préstamos se guardan en el servidor (los ve todo el
+ * equipo): hooks en `_lib/datosServidor.ts`, cálculos en `_lib/capitalStorage.ts`.
  *
  * - Utilidad = utilidad operativa del año del periodo elegido, a la fecha (`useResultadosAnuales`): la misma cuenta
  *   que Resultados. El capital es todo lo registrado, de cualquier fecha.
@@ -32,20 +32,22 @@ import {
   PanelCard,
   PanelEmpty,
   PanelError,
+  PanelSkeleton,
   SIN_DATO,
 } from "../_components/ui";
 import {
   type CapitalEntry,
   type CapitalTipo,
+  capitalParaServidor,
   cuotaFrancesa,
+  entradaDeServidor,
   generarAmortizacion,
   resumirCapital,
   resumirPrestamo,
   tasaMensualDeTea,
   TIPOS_CAPITAL,
-  useCapitalEntries,
-  useCuotasPagadas,
 } from "../_lib/capitalStorage";
+import { mensajeError, useCapitalServidor } from "../_lib/datosServidor";
 import { aDiaKey, diasEntre, esDiaKey, etiquetaPeriodo, partes } from "../_lib/periodo";
 import { useAdminContexto, useResultadosAnuales } from "../_lib/useResultados";
 
@@ -78,11 +80,12 @@ const leer = (texto: string) => {
 
 export default function CapitalRoiPage() {
   const { toDate } = useAdminPeriod();
-  const { companyId, hoy } = useAdminContexto();
+  const { hoy } = useAdminContexto();
   const anio = partes(toDate)[0];
   const datos = useResultadosAnuales(anio);
 
-  const [capital, setCapital] = useCapitalEntries(companyId);
+  const { query, crear, actualizar, borrar } = useCapitalServidor();
+  const capital = useMemo(() => (query.data ?? []).map(entradaDeServidor), [query.data]);
   const [form, setForm] = useState<FormCapital | null>(null);
 
   const resumen = useMemo(() => resumirCapital(capital), [capital]);
@@ -129,23 +132,37 @@ export default function CapitalRoiPage() {
       }
       extra = { tasaAnualPct: tea, plazoCuotas: plazo, cuotaMensual: cuota, fechaInicio: form.fechaInicio };
     }
-    setCapital((prev) => [
-      ...prev,
-      {
-        id: `cap-${Date.now()}`,
-        tipo: form.tipo,
-        descripcion: form.descripcion.trim(),
-        monto,
-        tienda: form.tienda.trim() || "Consolidado",
-        ...extra,
+    const nuevo = capitalParaServidor({
+      tipo: form.tipo,
+      descripcion: form.descripcion.trim(),
+      monto,
+      tienda: form.tienda.trim() || "Consolidado",
+      ...extra,
+    });
+    crear.mutate(nuevo, {
+      onSuccess: () => {
+        setForm(null);
+        toast.success("Capital registrado");
       },
-    ]);
-    setForm(null);
-    toast.success("Capital registrado en este navegador");
+      onError: (error) => toast.error(mensajeError(error, "No se pudo registrar el capital")),
+    });
   }
 
-  function eliminar(id: string) {
-    setCapital((prev) => prev.filter((c) => c.id !== id));
+  function eliminar(entrada: CapitalEntry) {
+    borrar.mutate(entrada.id, {
+      onSuccess: () => toast.success(`${entrada.tipo} eliminado`),
+      onError: (error) => toast.error(mensajeError(error, "No se pudo eliminar")),
+    });
+  }
+
+  function pagarCuota(prestamo: CapitalEntry, cuotasPagadas: number, aviso: string) {
+    actualizar.mutate(
+      { id: prestamo.id, cambios: { cuotasPagadas } },
+      {
+        onSuccess: () => toast.success(aviso),
+        onError: (error) => toast.error(mensajeError(error, "No se pudo marcar la cuota")),
+      },
+    );
   }
 
   const rotulo = (
@@ -160,6 +177,7 @@ export default function CapitalRoiPage() {
     <div className="space-y-3.5">
       {rotulo}
       {datos.error ? <PanelError error={datos.error as Error} /> : <AvisoCostos costo={datos.total.costo} />}
+      {query.error && <PanelError error={query.error as Error} />}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <KpiCard
@@ -199,7 +217,7 @@ export default function CapitalRoiPage() {
       )}
 
       {form && (
-        <PanelCard titulo="Registrar capital" subtitulo="Se guarda solo en este navegador.">
+        <PanelCard titulo="Registrar capital" subtitulo="Lo ve todo el equipo con acceso a Finanzas.">
           <form onSubmit={guardar} aria-label="Registrar capital" className="space-y-3">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Campo label="Tipo" id="capital-tipo">
@@ -253,8 +271,8 @@ export default function CapitalRoiPage() {
               </p>
             )}
             <div className="flex flex-wrap gap-2">
-              <button type="submit" className={claseBotonPrimario}>
-                Guardar
+              <button type="submit" className={claseBotonPrimario} disabled={crear.isPending}>
+                {crear.isPending ? "Guardando…" : "Guardar"}
               </button>
               <button type="button" className={claseBotonSecundario} onClick={() => setForm(null)}>
                 Cancelar
@@ -269,7 +287,8 @@ export default function CapitalRoiPage() {
           titulo="Capital registrado"
           subtitulo="Aportes, aumentos, préstamos y utilidad reinvertida"
           acciones={
-            !form && (
+            !form &&
+            query.isSuccess && (
               <button type="button" className={claseBotonPrimario} onClick={() => setForm(formVacio(hoy))}>
                 <Plus className="h-3.5 w-3.5" aria-hidden />
                 Registrar capital
@@ -277,7 +296,9 @@ export default function CapitalRoiPage() {
             )
           }
         >
-          {capital.length === 0 ? (
+          {query.isLoading ? (
+            <PanelSkeleton variant="tabla" label="capital registrado" />
+          ) : capital.length === 0 ? (
             <PanelEmpty mensaje="Todavía no registraste capital" />
           ) : (
             <ul className="space-y-2">
@@ -295,7 +316,8 @@ export default function CapitalRoiPage() {
                     type="button"
                     className={claseBotonSecundario}
                     aria-label={`Eliminar ${c.tipo}: ${c.descripcion}`}
-                    onClick={() => eliminar(c.id)}
+                    disabled={borrar.isPending}
+                    onClick={() => eliminar(c)}
                   >
                     <Trash2 className="h-3.5 w-3.5" aria-hidden />
                   </button>
@@ -314,7 +336,15 @@ export default function CapitalRoiPage() {
               </p>
             </PanelCard>
           ) : (
-            prestamos.map((p) => <SeguimientoPrestamo key={p.id} companyId={companyId} prestamo={p} hoy={hoy} />)
+            prestamos.map((p) => (
+              <SeguimientoPrestamo
+                key={p.id}
+                prestamo={p}
+                hoy={hoy}
+                guardando={actualizar.isPending}
+                onPagar={(n, aviso) => pagarCuota(p, n, aviso)}
+              />
+            ))
           )}
         </div>
       </div>
@@ -407,16 +437,25 @@ function DatosPrestamo({ form, setForm }: { form: FormCapital; setForm: (form: F
   );
 }
 
-function SeguimientoPrestamo({ companyId, prestamo, hoy }: { companyId: string; prestamo: CapitalEntry; hoy: string }) {
-  const [cuotasPagadas, setCuotasPagadas] = useCuotasPagadas(companyId, prestamo.id);
+function SeguimientoPrestamo({
+  prestamo,
+  hoy,
+  guardando,
+  onPagar,
+}: {
+  prestamo: CapitalEntry;
+  hoy: string;
+  guardando: boolean;
+  onPagar: (cuotasPagadas: number, aviso: string) => void;
+}) {
+  const cuotasPagadas = prestamo.cuotasPagadas ?? 0;
   const cuotas = useMemo(() => generarAmortizacion(prestamo, cuotasPagadas, hoy), [prestamo, cuotasPagadas, hoy]);
   const resumen = resumirPrestamo(prestamo, cuotas);
   const progreso = cuotas.length > 0 ? resumen.pagadas / cuotas.length : 0;
 
   function pagar() {
     if (!resumen.proxima) return;
-    setCuotasPagadas((n) => n + 1);
-    toast.success(`Cuota ${resumen.proxima.n} pagada: ${formatSolesDecimales(resumen.proxima.cuota)}`);
+    onPagar(cuotasPagadas + 1, `Cuota ${resumen.proxima.n} pagada: ${formatSolesDecimales(resumen.proxima.cuota)}`);
   }
 
   return (
@@ -425,7 +464,7 @@ function SeguimientoPrestamo({ companyId, prestamo, hoy }: { companyId: string; 
       subtitulo={`${formatSoles(prestamo.monto)} · TEA ${(prestamo.tasaAnualPct ?? 0).toLocaleString("es-PE", { maximumFractionDigits: 2 })} % · ${formatNumber(prestamo.plazoCuotas ?? 0)} cuotas`}
       acciones={
         resumen.proxima && (
-          <button type="button" className={claseBotonPrimario} onClick={pagar}>
+          <button type="button" className={claseBotonPrimario} onClick={pagar} disabled={guardando}>
             <Check className="h-3.5 w-3.5" aria-hidden />
             Pagar cuota {resumen.proxima.n}
           </button>

@@ -1,8 +1,6 @@
-"use client";
-
 /**
- * Capital y préstamos (FEAT-34 M7) — en localStorage por empresa: solo en este navegador. No existe backend para
- * esto todavía (la Fase 3 lo pasa al servidor o lo retira, D6).
+ * Capital y préstamos (FEAT-34 M7). Desde la Fase 3 se guardan en el servidor (`ventas.admin_capital`, hooks en
+ * `datosServidor.ts`); acá quedan los cálculos y la conversión entre el formato del servidor y el de la pantalla.
  *
  * Arreglos de FEAT-34:
  * - La tasa de un préstamo es TEA (así se informa en Perú): la tasa mensual es `(1 + TEA)^(1/12) − 1`, no TEA ÷ 12.
@@ -12,8 +10,8 @@
  * - Cada préstamo tiene su propia tabla de amortización (antes solo el primero).
  */
 
+import type { CapitalNuevo, CapitalServidor, TipoCapitalServidor } from "@/interfaces/IAdministracion";
 import { type DiaKey, esDiaKey, hoyLima, MESES_CORTOS, partes, sumarMeses } from "./periodo";
-import { useLocalStorageState } from "./useLocalStorage";
 
 export type CapitalTipo = "Capital propio" | "Aumento de capital" | "Préstamo" | "Utilidad reinvertida";
 
@@ -32,18 +30,60 @@ export interface CapitalEntry {
   cuotaMensual?: number;
   /** Día `YYYY-MM-DD` del desembolso; la cuota 1 vence un mes después. */
   fechaInicio?: string;
+  /** Cuotas ya pagadas (solo préstamo). */
+  cuotasPagadas?: number;
 }
 
-const kCapital = (companyId: string) => `powip:admin:capital:${companyId || "anon"}`;
-const kCuotasPagadas = (companyId: string, prestamoId: string) =>
-  `powip:admin:capital-cuotas-pagadas:${companyId || "anon"}:${prestamoId}`;
+/** Tipo de la pantalla → código del servidor. */
+export const TIPO_CAPITAL_SERVIDOR: Record<CapitalTipo, TipoCapitalServidor> = {
+  "Capital propio": "capital_propio",
+  "Aumento de capital": "aumento_capital",
+  Préstamo: "prestamo",
+  "Utilidad reinvertida": "utilidad_reinvertida",
+};
 
-export function useCapitalEntries(companyId: string) {
-  return useLocalStorageState<CapitalEntry[]>(kCapital(companyId), []);
+const TIPO_CAPITAL_PANTALLA = Object.fromEntries(
+  Object.entries(TIPO_CAPITAL_SERVIDOR).map(([pantalla, servidor]) => [servidor, pantalla]),
+) as Record<TipoCapitalServidor, CapitalTipo>;
+
+/** Fila del servidor → entrada de la pantalla (sin tienda = «Consolidado»). */
+export function entradaDeServidor(fila: CapitalServidor): CapitalEntry {
+  const entrada: CapitalEntry = {
+    id: fila.id,
+    tipo: TIPO_CAPITAL_PANTALLA[fila.tipo] ?? "Capital propio",
+    descripcion: fila.descripcion,
+    monto: Number(fila.monto) || 0,
+    tienda: fila.tienda || "Consolidado",
+  };
+  if (fila.tipo !== "prestamo") return entrada;
+  return {
+    ...entrada,
+    tasaAnualPct: fila.teaPct ?? undefined,
+    plazoCuotas: fila.plazoCuotas ?? undefined,
+    cuotaMensual: fila.cuotaMensual ?? undefined,
+    fechaInicio: fila.fechaInicio ?? undefined,
+    cuotasPagadas: fila.cuotasPagadas ?? 0,
+  };
 }
 
-export function useCuotasPagadas(companyId: string, prestamoId: string) {
-  return useLocalStorageState<number>(kCuotasPagadas(companyId, prestamoId), 0);
+/** Entrada de la pantalla (sin id) → lo que se manda al servidor. Lo que no es préstamo no lleva datos de préstamo. */
+export function capitalParaServidor(entrada: Omit<CapitalEntry, "id">): CapitalNuevo {
+  const tipo = TIPO_CAPITAL_SERVIDOR[entrada.tipo];
+  const base: CapitalNuevo = {
+    tipo,
+    descripcion: entrada.descripcion,
+    monto: centavos(entrada.monto),
+    tienda: entrada.tienda.trim() || null,
+  };
+  if (tipo !== "prestamo") return base;
+  return {
+    ...base,
+    teaPct: entrada.tasaAnualPct ?? null,
+    plazoCuotas: entrada.plazoCuotas ?? null,
+    cuotaMensual: entrada.cuotaMensual != null ? centavos(entrada.cuotaMensual) : null,
+    fechaInicio: esDiaKey(entrada.fechaInicio) ? entrada.fechaInicio : null,
+    cuotasPagadas: entrada.cuotasPagadas ?? 0,
+  };
 }
 
 const centavos = (valor: number) => Math.round(valor * 100) / 100;

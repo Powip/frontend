@@ -1,4 +1,5 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
+import { type ApiFalsa, comprasVacias, renderConServidor } from "../../_lib/__tests__/servidor-falso";
 import { aDiaKey, diasDelMes } from "../../_lib/periodo";
 import { calcularResultados, type Resultados } from "../../_lib/resultados";
 import FlujoDeCajaPage from "../page";
@@ -12,6 +13,9 @@ jest.mock("../../_lib/useResultados", () => ({
   useAdminContexto: () => ({ companyId: "c1", token: "t", storeIds: [], igvPct: 18, hoy: "2026-11-26" }),
   useResultadosAnuales: (...args: unknown[]) => mockAnuales(...args),
 }));
+jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ auth: { company: { id: "c1" }, accessToken: "t" } }) }));
+jest.mock("@/api/Administracion", () => jest.requireActual("../../_lib/__tests__/servidor-falso").crearApiFalsa());
+const servidor = jest.requireMock<ApiFalsa>("@/api/Administracion");
 jest.mock("@/components/advertising/AdvertisingCompanySpend", () => ({
   AdvertisingCompanySpend: () => <div>gasto de anuncios embebido</div>,
 }));
@@ -94,10 +98,25 @@ function anual(porMes: Record<number, Resultados>, gastosCrudos: ReturnType<type
   };
 }
 
-beforeEach(() => mockAnuales.mockReset());
+beforeEach(() => {
+  mockAnuales.mockReset();
+  servidor.__reiniciar();
+});
+
+/** Compras de inventario pagadas en 2026, por mes. */
+function comprasPagadas(porMes: Array<{ mes: string; compras: number; monto: number }>) {
+  servidor.__ponerCompras({
+    ...comprasVacias("2026-01-01", "2026-11-26"),
+    pagadas: {
+      compras: porMes.reduce((s, m) => s + m.compras, 0),
+      monto: porMes.reduce((s, m) => s + m.monto, 0),
+      porMes,
+    },
+  });
+}
 
 describe("Flujo de caja", () => {
-  it("entradas − salidas (compra de mercadería, fijos, publicidad de Gastos, envíos y comisiones), sin restar el costo", () => {
+  it("entradas − salidas (compra de mercadería, fijos, publicidad de Gastos, envíos y comisiones), sin restar el costo", async () => {
     mockAnuales.mockReturnValue(
       anual(
         {
@@ -114,8 +133,9 @@ describe("Flujo de caja", () => {
         ],
       ),
     );
-    render(<FlujoDeCajaPage />);
+    renderConServidor(<FlujoDeCajaPage />);
 
+    await screen.findByRole("table", { name: "Flujo de caja estimado por mes de 2026" });
     expect(mockAnuales).toHaveBeenCalledWith(2026);
     const tabla = screen.getByRole("table", { name: "Flujo de caja estimado por mes de 2026" });
     const enero = within(tabla).getByText("enero").closest("tr") as HTMLElement;
@@ -147,23 +167,57 @@ describe("Flujo de caja", () => {
     expect(screen.queryByText("gasto de anuncios embebido")).not.toBeInTheDocument();
   });
 
-  it("los envíos son el flete por pedido y avisa si se conoce en pocas entregas del año", () => {
+  it("los envíos son el flete por pedido y avisa si se conoce en pocas entregas del año", async () => {
     mockAnuales.mockReturnValue({
       ...anual({ 1: res({ ventas: 1000, envios: 50 }) }, []),
       flete: { monto: 50, conFlete: 3, entregas: 50, cobertura: 0.06 },
     });
-    render(<FlujoDeCajaPage />);
+    renderConServidor(<FlujoDeCajaPage />);
     expect(
-      screen.getByText(
+      await screen.findByText(
         "Envíos = flete por pedido. Flete conocido en 3 de 50 entregas: el resto no suma envío, así que la utilidad sale sobreestimada.",
       ),
     ).toBeInTheDocument();
   });
 
-  it("no revienta sin datos y avisa que faltan las compras de mercadería", () => {
+  it("la compra de mercadería suma las compras de inventario pagadas (módulo Compras) a lo cargado en Gastos", async () => {
+    comprasPagadas([
+      { mes: "2026-01", compras: 2, monto: 1500 },
+      { mes: "2026-03", compras: 1, monto: 600 },
+    ]);
+    mockAnuales.mockReturnValue(
+      anual({ 1: res({ ventas: 5000 }), 3: res({ ventas: 1000 }) }, [gasto("INVERSION", 2026, 1, 400)]),
+    );
+    renderConServidor(<FlujoDeCajaPage />);
+
+    const tabla = await screen.findByRole("table", { name: "Flujo de caja estimado por mes de 2026" });
+    await waitFor(() =>
+      expect(within(tabla).getByText("enero").closest("tr")).toHaveTextContent("S/ 1,900"),
+    );
+    // enero: 5.000 − (1.500 + 400) = 3.100; marzo: 1.000 − 600 = 400.
+    expect(within(tabla).getByText("enero").closest("tr")).toHaveTextContent("S/ 3,100");
+    expect(within(tabla).getByText("marzo").closest("tr")).toHaveTextContent("S/ 600");
+    const kpi = screen.getByRole("region", { name: "Compra de mercadería" });
+    expect(kpi).toHaveTextContent("S/ 2,500");
+    expect(kpi).toHaveTextContent("Compras de inventario S/ 2,100 · cargado en Gastos S/ 400");
+    expect(servidor.getComprasAdministracion).toHaveBeenCalledWith("2026-01-01", "2026-11-26", expect.anything());
+    // Con las dos fuentes, avisa que una compra cargada en los dos lados se cuenta dos veces.
+    expect(screen.getByText(/se cuenta dos veces/)).toBeInTheDocument();
+    expect(screen.queryByText(/No hay compras de mercadería/)).not.toBeInTheDocument();
+  });
+
+  it("si no se pueden leer las compras de inventario, sigue con lo de Gastos y lo avisa", async () => {
+    servidor.getComprasAdministracion.mockRejectedValueOnce(new Error("caído"));
+    mockAnuales.mockReturnValue(anual({ 1: res({ ventas: 1000 }) }, [gasto("INVERSION", 2026, 1, 400)]));
+    renderConServidor(<FlujoDeCajaPage />);
+    expect(await screen.findByText(/No se pudieron leer las compras de inventario/)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Compra de mercadería" })).toHaveTextContent("S/ 400");
+  });
+
+  it("no revienta sin datos y avisa que faltan las compras de mercadería", async () => {
     mockAnuales.mockReturnValue(anual({}, []));
-    render(<FlujoDeCajaPage />);
-    expect(screen.getByText("No hay compras de mercadería cargadas en 2026")).toBeInTheDocument();
+    renderConServidor(<FlujoDeCajaPage />);
+    expect(await screen.findByText("No hay compras de mercadería en 2026")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Compra de mercadería" })).toHaveTextContent("—");
     expect(screen.getByRole("region", { name: "Neto del año" })).toHaveTextContent("S/ 0");
   });

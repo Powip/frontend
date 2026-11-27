@@ -24,14 +24,17 @@ import {
   waInput,
   waLabel,
 } from "@/components/whatsapp/ui/wa-classes";
-import { SIGNUP_REQUIREMENTS } from "@/features/whatsapp/constants/whatsapp-connection-catalog";
+import {
+  COEX_SIGNUP_REQUIREMENTS,
+  SIGNUP_REQUIREMENTS,
+} from "@/features/whatsapp/constants/whatsapp-connection-catalog";
 import type { WhatsAppAgentOption } from "@/features/whatsapp/models/conversation.model";
 import { cn } from "@/lib/utils";
 import {
   type ConnectionMutations,
   errorMessage,
-  needsCoexistenceConfirmation,
   type NumberRole,
+  needsCoexistenceConfirmation,
   type SignupPhoneChoice,
   type SignupReassign,
   signupPhoneChoice,
@@ -56,10 +59,13 @@ interface ConnectNumberDialogProps {
   selectSignupPhone?: ConnectionMutations["selectSignupPhone"];
   initialPhase?: SignupPhase;
   agents?: WhatsAppAgentOption[];
+  /** Cambio de modo: se vuelve a conectar este número, sin tocar su vendedora ni principal. */
+  reconnect?: { phone: string; isCompanyDefault: boolean };
   onClose: () => void;
 }
 
 const STEP_LABELS = ["Inicia sesión con Meta", "Elige el número", "Verifica el código"];
+const COEX_STEP_LABELS = ["Inicia sesión con Meta", "Elige el número", "Confirma en el celular"];
 
 export function ConnectNumberDialog({
   storeId,
@@ -70,11 +76,12 @@ export function ConnectNumberDialog({
   selectSignupPhone,
   initialPhase = { kind: "intro" },
   agents = [],
+  reconnect,
   onClose,
 }: ConnectNumberDialogProps) {
   const reasonId = useId();
   const [phase, setPhase] = useState<SignupPhase>(initialPhase);
-  const [role, setRole] = useState<NumberRole>("store");
+  const [role, setRole] = useState<NumberRole>(reconnect?.isCompanyDefault ? "company" : "store");
   const [sellerId, setSellerId] = useState<string | null>(null);
   const [askCoexistence, setAskCoexistence] = useState(false);
   const [expectedPhone, setExpectedPhone] = useState("");
@@ -108,6 +115,15 @@ export function ConnectNumberDialog({
       setReassign(move);
       return;
     }
+    // Reconexión a «API + app»: sin el número en la app no habría cambio de modo que guardar.
+    if (reconnect && mode === "coex" && needsCoexistenceConfirmation(caught)) {
+      setPhase({
+        kind: "error",
+        message:
+          "Meta dice que este número no está en la app WhatsApp Business del celular. No se cambió nada.",
+      });
+      return;
+    }
     // Meta dijo que el número no tiene coexistencia: no se conectó nada; se pregunta.
     if (needsCoexistenceConfirmation(caught) && !confirmed.current.confirmNoCoexistence) {
       const selectionId = signupSelectionId(caught);
@@ -134,7 +150,11 @@ export function ConnectNumberDialog({
         mode,
         role,
         seller: sellerChoice(),
-        ...(expectedPhone.trim() ? { expectedPhoneNumber: expectedPhone.trim() } : {}),
+        ...(reconnect
+          ? { expectedPhoneNumber: reconnect.phone, keepRole: true }
+          : expectedPhone.trim()
+            ? { expectedPhoneNumber: expectedPhone.trim() }
+            : {}),
         ...(confirmNoCoexistence ? { confirmNoCoexistence: true } : {}),
       });
       setPhase({ kind: "success" });
@@ -154,6 +174,7 @@ export function ConnectNumberDialog({
         ...(phoneNumberId ? { phoneNumberId } : {}),
         role,
         seller: sellerChoice(),
+        ...(reconnect ? { keepRole: true } : {}),
         ...confirmed.current,
       });
       setPhase({ kind: "success" });
@@ -173,6 +194,11 @@ export function ConnectNumberDialog({
   // Facebook sirve una sola vez. Con coexistencia se abre Meta y el backend lo confirma.
   const start = () => {
     if (blocked || !roleComplete || phase.kind === "waiting") return;
+    // En una reconexión el aviso ya se confirmó al elegir la tarjeta.
+    if (mode === "api" && reconnect) {
+      void run(true);
+      return;
+    }
     if (mode === "api") {
       setAskCoexistence(true);
       return;
@@ -191,12 +217,14 @@ export function ConnectNumberDialog({
         className={cn(waDialogContent, "max-h-[calc(100dvh-2rem)] sm:max-w-[560px]")}
       >
         <DialogHeader className={waDialogHeader}>
-          <DialogTitle className={waDialogTitle}>Conectar número de {storeName}</DialogTitle>
+          <DialogTitle className={waDialogTitle}>
+            {reconnect ? `Volver a conectar ${reconnect.phone}` : `Conectar número de ${storeName}`}
+          </DialogTitle>
           <WaDialogClose onClick={close} />
         </DialogHeader>
         <div className={cn(waDialogBody, "flex flex-col gap-3.5 overflow-y-auto")}>
           <ol className="m-0 mb-1.5 flex list-none gap-2 p-0" aria-label="Pasos de la conexión">
-            {STEP_LABELS.map((label, index) => (
+            {(mode === "coex" ? COEX_STEP_LABELS : STEP_LABELS).map((label, index) => (
               <li
                 key={label}
                 className={cn(
@@ -222,19 +250,29 @@ export function ConnectNumberDialog({
             crear o elegir tu cuenta de WhatsApp Business.
           </p>
           <ul className="m-0 flex list-none flex-col gap-2 p-0 text-xs">
-            {SIGNUP_REQUIREMENTS.map((requirement) => (
-              <li key={requirement} className="flex items-center gap-2.5">
-                <Check className="size-[18px] shrink-0 text-wa-green" aria-hidden="true" />
-                {requirement}
-              </li>
-            ))}
+            {(mode === "coex" ? COEX_SIGNUP_REQUIREMENTS : SIGNUP_REQUIREMENTS).map(
+              (requirement) => (
+                <li key={requirement} className="flex items-center gap-2.5">
+                  <Check className="size-[18px] shrink-0 text-wa-green" aria-hidden="true" />
+                  {requirement}
+                </li>
+              ),
+            )}
           </ul>
           <p className="m-0 text-xs text-wa-muted">
-            Los pasos 2 y 3 (elegir el número, el nombre visible y el código por SMS o llamada)
-            ocurren en la ventana de Meta, no en POWIP.
+            {mode === "coex"
+              ? "Los pasos 2 y 3 (elegir el número y confirmarlo) ocurren en la ventana de Meta y en la app del celular, no en POWIP."
+              : "Los pasos 2 y 3 (elegir el número, el nombre visible y el código por SMS o llamada) ocurren en la ventana de Meta, no en POWIP."}
           </p>
 
-          {phase.kind !== "success" && (
+          {reconnect && (
+            <p className="m-0 text-xs text-wa-muted">
+              Elige en Meta el mismo número: {reconnect.phone}. POWIP no conecta otro. Conserva su
+              tienda, vendedora y marca de principal.
+            </p>
+          )}
+
+          {!reconnect && phase.kind !== "success" && (
             <div className={waField}>
               <label className={waLabel} htmlFor={expectedPhoneId}>
                 Número que vas a conectar (opcional)
@@ -257,7 +295,7 @@ export function ConnectNumberDialog({
             </div>
           )}
 
-          {phase.kind !== "success" && (
+          {!reconnect && phase.kind !== "success" && (
             <NumberRoleField
               storeName={storeName}
               role={role}

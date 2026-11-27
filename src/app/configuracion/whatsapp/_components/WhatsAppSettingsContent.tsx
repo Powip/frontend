@@ -3,11 +3,9 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { useWhatsAppRealtime } from "@/features/whatsapp/hooks/use-whatsapp-realtime";
 import { resolveWhatsAppAccess } from "@/features/whatsapp/utils/whatsapp-access.util";
-import {
-  WhatsAppPageFrame,
-  WhatsAppPageHeader,
-} from "./WhatsAppPageLayout";
+import { ViewedStoreProvider } from "./viewed-store-context";
 import { WhatsAppConnectionStatusPill } from "./WhatsAppConnectionStatusPill";
+import { WhatsAppPageFrame, WhatsAppPageHeader } from "./WhatsAppPageLayout";
 import { WhatsAppTabs } from "./WhatsAppTabs";
 
 export function WhatsAppSettingsContent() {
@@ -21,9 +19,11 @@ export function WhatsAppSettingsContent() {
   const businessName = auth.company?.name?.trim() || "Tu tienda";
 
   return (
-    <WhatsAppPageFrame>
-      <WhatsAppPageHeader status={<WhatsAppConnectionStatusPill />} />
-      <WhatsAppTabs access={access} businessName={businessName} />
-    </WhatsAppPageFrame>
+    <ViewedStoreProvider>
+      <WhatsAppPageFrame>
+        <WhatsAppPageHeader status={<WhatsAppConnectionStatusPill />} />
+        <WhatsAppTabs access={access} businessName={businessName} />
+      </WhatsAppPageFrame>
+    </ViewedStoreProvider>
   );
 }

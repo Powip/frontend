@@ -187,19 +187,18 @@ describe("Reporte rápido", () => {
     expect(screen.getByRole("link", { name: "Resultados › Resumen anual" })).toBeInTheDocument();
   });
 
-  it("muestra el saldo contra entrega en calle de los últimos 90 días, con todos los estados", () => {
+  it("lo por cobrar queda en un resumen con enlace a Cuentas (el detalle vive allá)", () => {
     preparar("2026-11-01", HOY);
     render(<ReporteRapidoPage />);
 
-    expect(screen.getByText(/Pedidos en calle de los últimos 90 días/)).toBeInTheDocument();
-    const lista = screen.getByRole("list", { name: "Pedidos en calle por estado" });
-    expect(within(lista).getByText("En envío")).toBeInTheDocument();
-    expect(within(lista).getByText("Con guía asignada")).toBeInTheDocument();
-    const enEnvio = within(lista).getByText("En envío").closest("li") as HTMLElement;
-    expect(within(enEnvio).getByText(`1 · ${formatSoles(200)}`)).toBeInTheDocument();
-    const conGuia = within(lista).getByText("Con guía asignada").closest("li") as HTMLElement;
-    expect(within(conGuia).getByText(`1 · ${formatSoles(100)}`)).toBeInTheDocument();
-    expect(screen.getAllByText(formatSoles(500)).length).toBeGreaterThan(0);
+    const tarjeta = screen.getByRole("heading", { name: "Por cobrar en calle (contra entrega)" }).closest("section") as HTMLElement;
+    expect(within(tarjeta).getByText(formatSoles(500))).toBeInTheDocument();
+    expect(within(tarjeta).getByRole("link", { name: "Ver detalle en Caja › Cuentas por cobrar y pagar" })).toHaveAttribute(
+      "href",
+      "/administracion/cuentas",
+    );
+    // El desglose por estado ya no se repite acá.
+    expect(screen.queryByRole("list", { name: "Pedidos en calle por estado" })).not.toBeInTheDocument();
     // El despachado de setiembre lleva más de 30 días en calle.
     expect(screen.getByText(/1 pedido sigue en calle después de 30 días/)).toBeInTheDocument();
   });

@@ -8,8 +8,8 @@
  * - Proyección del mes solo con el mes en curso hasta hoy: ventas y utilidad al ritmo diario × días del mes. Con otro
  *   periodo se compara contra la meta repartida por días. Metas del año del periodo y sin valores por defecto.
  * - Ventas calculadas en ms-ventas, contadas el día en que se ENTREGARON (D1). Envíos = flete por pedido (D9).
- * - Cobros en calle: `usePedidosEnTransito` (con guía, en envío y despachados, últimos 90 días), ya sumado por estado
- *   y con los que llevan más de 30 días en la calle (`/administracion/en-transito`).
+ * - Cobros en calle: `usePedidosEnTransito` (con guía, en envío y despachados, últimos 90 días). Fase 3: acá solo el
+ *   total y un enlace; el detalle (por courier, por estado, lo que el courier no liquidó) vive en Caja › Cuentas.
  * - Simulador sin doble conteo: gastos fijos sin publicidad, publicidad aparte, envío por pedido = envíos ÷ pedidos.
  * - Publicidad del módulo con días cerrados (`hastaAyer`) y una sola tarjeta de costo por venta. La inversión manual
  *   del navegador ya no se usa.
@@ -23,7 +23,6 @@ import { toast } from "sonner";
 import { AdvertisingBusinessMetricsPanel } from "@/components/advertising/AdvertisingBusinessMetricsPanel";
 import { ProgressBar } from "@/components/panel-control/charts/ProgressBar";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
-import { ESTADOS_EN_TRANSITO, type EstadoEnTransito } from "@/interfaces/IAdministracion";
 import { getCourierSettlements, settlementMoney } from "@/services/courierSettlementsService";
 import {
   Aviso,
@@ -66,6 +65,7 @@ const RUTA_METAS = "/administracion/anual";
 const RUTA_PUBLICIDAD = "/administracion/pauta";
 const RUTA_GASTOS = "/administracion/gastos";
 const RUTA_LIQUIDACIONES = "/operaciones/liquidaciones";
+const RUTA_CUENTAS = "/administracion/cuentas";
 
 // ---- Cuentas de la página ---------------------------------------------------------------------
 
@@ -217,12 +217,6 @@ function textoParaCompartir(r: Resultados, etiqueta: string, flete: CoberturaFle
   filas.push("", "— vía Powip");
   return filas.join("\n");
 }
-
-const NOMBRE_ESTADO_TRANSITO: Record<EstadoEnTransito, string> = {
-  ASIGNADO_A_GUIA: "Con guía asignada",
-  EN_ENVIO: "En envío",
-  DESPACHADO: "Despachado",
-};
 
 const MENSAJE_PUBLICIDAD: Partial<Record<EstadoPublicidad, string>> = {
   sin_permiso: "No tienes permiso para ver la publicidad de la empresa.",
@@ -646,28 +640,21 @@ export default function ReporteRapidoPage() {
           <PanelCard
             titulo="Por cobrar en calle (contra entrega)"
             subtitulo={`Pedidos en calle de los últimos ${diasEntre(transito.desde, transito.hasta)} días: con guía asignada, en envío o despachados. Es una foto de hoy, no depende del periodo.`}
+            acciones={
+              <Link href={RUTA_CUENTAS} className={claseBotonSecundario}>
+                Ver detalle en Caja › Cuentas por cobrar y pagar
+              </Link>
+            }
           >
             {transito.cargando ? (
               <PanelSkeleton variant="linea" label="pedidos en calle" />
             ) : transito.error ? (
               <p className="text-xs text-pc-text-muted">No se pudieron leer los pedidos en calle.</p>
             ) : (
-              <div className="space-y-3">
-                <dl className="grid grid-cols-2 gap-3">
-                  <Dato label="Saldo por cobrar" valor={formatSoles(transito.saldo)} />
-                  <Dato label="Pedidos en calle" valor={formatNumber(transito.pedidos)} />
-                </dl>
-                <ul className="space-y-1 text-xs" aria-label="Pedidos en calle por estado">
-                  {ESTADOS_EN_TRANSITO.map((estado) => (
-                    <li key={estado} className="flex justify-between gap-2 border-t border-pc-border-soft pt-1">
-                      <span className="text-pc-text-muted">{NOMBRE_ESTADO_TRANSITO[estado]}</span>
-                      <span className="tabular-nums text-pc-text">
-                        {formatNumber(transito.porEstado[estado].pedidos)} · {formatSoles(transito.porEstado[estado].saldo)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <dl className="grid grid-cols-2 gap-3">
+                <Dato label="Saldo por cobrar" valor={formatSoles(transito.saldo)} />
+                <Dato label="Pedidos en calle" valor={formatNumber(transito.pedidos)} />
+              </dl>
             )}
           </PanelCard>
 

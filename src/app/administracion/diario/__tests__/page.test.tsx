@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { type ApiFalsa, renderConServidor } from "../../_lib/__tests__/servidor-falso";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
 import { formatSoles, formatSolesDecimales } from "@/features/panel-control/shared/utils/format";
 import type { EstadoPublicidad, PublicidadConectada } from "../../_lib/publicidad";
@@ -8,6 +9,9 @@ import type { PedidoAdmin } from "../../_lib/ventas";
 import ControlDiarioPage from "../page";
 
 jest.mock("@/contexts/AdminPeriodContext", () => ({ useAdminPeriod: jest.fn() }));
+jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ auth: { company: { id: "c1" }, accessToken: "t" } }) }));
+jest.mock("@/api/Administracion", () => jest.requireActual("../../_lib/__tests__/servidor-falso").crearApiFalsa());
+const servidor = jest.requireMock<ApiFalsa>("@/api/Administracion");
 jest.mock("../../_lib/useResultados", () => ({
   useAdminContexto: jest.fn(),
   useResultadosPeriodo: jest.fn(),
@@ -78,13 +82,16 @@ const filaDelDia = (tabla: HTMLElement, dia: string) =>
     .getAllByRole("row")
     .find((fila) => (fila.textContent ?? "").startsWith(dia)) as HTMLElement;
 
-beforeEach(() => window.localStorage.clear());
+beforeEach(() => {
+  window.localStorage.clear();
+  servidor.__reiniciar();
+});
 afterEach(() => jest.clearAllMocks());
 
 describe("Control diario", () => {
   it("muestra todos los canales que aparecen en las ventas, con las grafías de TikTok Live juntas", () => {
     preparar();
-    render(<ControlDiarioPage />);
+    renderConServidor(<ControlDiarioPage />);
 
     const chips = screen.getByRole("group", { name: "Canal" });
     for (const nombre of [
@@ -103,7 +110,7 @@ describe("Control diario", () => {
 
   it("suma ventas y unidades reales por día de entrega en Lima, con publicidad conectada y costo por venta", () => {
     preparar();
-    render(<ControlDiarioPage />);
+    renderConServidor(<ControlDiarioPage />);
 
     expect(within(kpi("Ventas")).getByText(formatSoles(1500))).toBeInTheDocument();
     expect(within(kpi("Unidades")).getByText("8")).toBeInTheDocument();
@@ -120,7 +127,7 @@ describe("Control diario", () => {
 
   it("al elegir un canal filtra los días y no inventa publicidad por canal", () => {
     preparar();
-    render(<ControlDiarioPage />);
+    renderConServidor(<ControlDiarioPage />);
 
     fireEvent.click(within(screen.getByRole("group", { name: "Canal" })).getByRole("button", { name: "TikTok Live (2)" }));
     expect(within(kpi("Ventas")).getByText(formatSoles(300))).toBeInTheDocument();
@@ -135,27 +142,27 @@ describe("Control diario", () => {
 
   it("sin permiso de publicidad lo dice sin alerta roja", () => {
     preparar({ estado: "sin_permiso" });
-    render(<ControlDiarioPage />);
+    renderConServidor(<ControlDiarioPage />);
 
     expect(screen.getByText(/No tienes permiso para ver la publicidad/)).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(within(kpi("Publicidad")).getByText("—")).toBeInTheDocument();
   });
 
-  it("guarda el objetivo diario en el navegador con la clave de canal normalizada y muestra el avance", () => {
+  it("guarda el objetivo diario en el servidor con la clave de canal normalizada y muestra el avance", async () => {
     preparar();
-    render(<ControlDiarioPage />);
+    renderConServidor(<ControlDiarioPage />);
 
     expect(within(kpi("Avance vs objetivo")).getByText("Sin objetivo")).toBeInTheDocument();
-    expect(screen.getByText(/Se guarda solo en este navegador/)).toBeInTheDocument();
+    expect(screen.getByText("Lo ve todo el equipo con acceso a Finanzas.")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Poner objetivo" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Poner objetivo" }));
     fireEvent.change(screen.getByLabelText("Objetivo de ventas por día (S/)"), { target: { value: "400" } });
     fireEvent.click(screen.getByRole("button", { name: "Guardar objetivo" }));
 
-    expect(window.localStorage.getItem("powip:admin:objetivo-canal:c1:todos")).toBe(JSON.stringify({ ventasDia: 400 }));
     // 1.500 vendidos contra 3 días × 400.
-    expect(within(kpi("Avance vs objetivo")).getByText("125%")).toBeInTheDocument();
+    expect(await within(kpi("Avance vs objetivo")).findByText("125%")).toBeInTheDocument();
+    expect(servidor.guardarObjetivoAdministracion).toHaveBeenCalledWith("todos", 400);
     const tabla = screen.getByRole("table", { name: "Ventas por día, Todos los canales" });
     const celdas = within(filaDelDia(tabla, "12 nov")).getAllByRole("cell").map((c) => c.textContent);
     expect(celdas.slice(-2)).toEqual([formatSoles(400), "125%"]);
@@ -165,13 +172,13 @@ describe("Control diario", () => {
     fireEvent.click(screen.getByRole("button", { name: "Poner objetivo" }));
     fireEvent.change(screen.getByLabelText("Objetivo de ventas por día (S/)"), { target: { value: "50" } });
     fireEvent.click(screen.getByRole("button", { name: "Guardar objetivo" }));
-    expect(window.localStorage.getItem("powip:admin:objetivo-canal:c1:TIKTOK_LIVE")).toBe(JSON.stringify({ ventasDia: 50 }));
-    expect(window.localStorage.getItem("powip:admin:objetivo-canal:c1:todos")).toBe(JSON.stringify({ ventasDia: 400 }));
+    await waitFor(() => expect(servidor.guardarObjetivoAdministracion).toHaveBeenLastCalledWith("TIKTOK_LIVE", 50));
+    expect(window.localStorage.length).toBe(0);
   });
 
   it("dice que la venta cuenta el día de entrega y avisa las entregas sin historial", () => {
     preparar({ entregasSinHistorial: 2 });
-    render(<ControlDiarioPage />);
+    renderConServidor(<ControlDiarioPage />);
     expect(screen.getByText("Una venta es un pedido entregado y cuenta en el día en que se entregó.")).toBeInTheDocument();
     expect(
       screen.getByText("2 ventas no tienen registrado el día de entrega: se cuentan en el día en que se crearon."),
@@ -181,7 +188,7 @@ describe("Control diario", () => {
 
   it("no revienta sin datos ni mientras carga", () => {
     preparar({ pedidos: [], estado: "sin_cuentas" });
-    const { unmount } = render(<ControlDiarioPage />);
+    const { unmount } = renderConServidor(<ControlDiarioPage />);
     expect(within(kpi("Ventas")).getByText(formatSoles(0))).toBeInTheDocument();
     expect(screen.getByText("Sin ventas en el periodo")).toBeInTheDocument();
     const tabla = screen.getByRole("table", { name: "Ventas por día, Todos los canales" });
@@ -189,7 +196,7 @@ describe("Control diario", () => {
     unmount();
 
     preparar({ cargando: true });
-    render(<ControlDiarioPage />);
+    renderConServidor(<ControlDiarioPage />);
     expect(screen.getByLabelText("Cargando ventas del periodo")).toBeInTheDocument();
   });
 });

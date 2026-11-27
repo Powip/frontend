@@ -32,6 +32,7 @@ import {
   QUALITY_LABELS,
 } from "@/features/whatsapp/constants/whatsapp-connection-catalog";
 import {
+  WHATSAPP_CONNECTION_TYPES,
   WHATSAPP_NAME_STATUSES,
   WHATSAPP_QUALITY_RATINGS,
   type WhatsAppNameStatus,
@@ -113,6 +114,26 @@ function NumberAvatar({ verified }: { verified: boolean }) {
         </span>
       )}
     </span>
+  );
+}
+
+/** «Solo app»: no hay datos de Meta que mostrar. */
+function AppOnlyDetails({ account }: { account: WhatsAppAccount }) {
+  const definition = getConnectionTypeDefinition(WHATSAPP_CONNECTION_TYPES.APP_MANUAL);
+  return (
+    <div className="flex flex-wrap items-start gap-4">
+      <NumberAvatar verified={false} />
+      <div className="min-w-0 flex-1">
+        <div className="wa-num text-lg font-semibold [overflow-wrap:anywhere]">
+          {account.phone ?? "Número sin dato"}
+        </div>
+        <div className="text-wa-muted">{definition.title}</div>
+        <p className="m-0 mt-2 text-[13px]">
+          Powip no envía ni recibe por este número. Los avisos quedan en la bandeja de envío
+          asistido. Sin Bandeja ni Pau.
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -285,6 +306,7 @@ export function ConnectedNumberSection({
   const [disconnectState, setDisconnectState] = useState<ActionState>({ kind: "idle" });
   const ready = account.kind === "ready" ? account.data : null;
   const pendingIntegration = account.kind === "pending-integration";
+  const appOnly = ready?.connectionType === WHATSAPP_CONNECTION_TYPES.APP_MANUAL;
 
   const refresh = async () => {
     if (!ready || !mutations.refresh || blockedReason || refreshState.kind === "pending") return;
@@ -315,15 +337,17 @@ export function ConnectedNumberSection({
 
   const actions = ready ? (
     <>
-      <BlockedActionButton
-        className={waButton({ size: "sm" })}
-        blocked={!!blockedReason || refreshState.kind === "pending"}
-        blockedReasonId={refreshReasonId}
-        onClick={refresh}
-      >
-        <RefreshCw aria-hidden="true" />
-        Actualizar
-      </BlockedActionButton>
+      {!appOnly && (
+        <BlockedActionButton
+          className={waButton({ size: "sm" })}
+          blocked={!!blockedReason || refreshState.kind === "pending"}
+          blockedReasonId={refreshReasonId}
+          onClick={refresh}
+        >
+          <RefreshCw aria-hidden="true" />
+          Actualizar
+        </BlockedActionButton>
+      )}
       <Button
         type="button"
         className={waButton({ variant: "danger", size: "sm" })}
@@ -360,7 +384,11 @@ export function ConnectedNumberSection({
       <WaCardHeader
         titleId="connected-number-title"
         title="Número conectado"
-        description="Este es el número desde el que tus clientes reciben los avisos."
+        description={
+          appOnly
+            ? "Los avisos a tus clientes se envían a mano desde este número."
+            : "Este es el número desde el que tus clientes reciben los avisos."
+        }
         actions={actions}
       />
       {ready && blockedReason && (
@@ -405,7 +433,13 @@ export function ConnectedNumberSection({
             </div>
           }
         >
-          {(data) => (data ? <AccountDetails account={data} now={now} /> : null)}
+          {(data) =>
+            !data ? null : data.connectionType === WHATSAPP_CONNECTION_TYPES.APP_MANUAL ? (
+              <AppOnlyDetails account={data} />
+            ) : (
+              <AccountDetails account={data} now={now} />
+            )
+          }
         </WhatsAppResourceState>
       )}
       <AlertDialog open={disconnectOpen} onOpenChange={setDisconnectOpen}>
@@ -417,8 +451,9 @@ export function ConnectedNumberSection({
           </AlertDialogHeader>
           <div className={cn(waDialogBody, "space-y-3")}>
             <AlertDialogDescription className="m-0 text-sm text-wa-muted">
-              Se pausan todos los avisos automáticos y envíos programados de {storeName}. Tus
-              plantillas y el historial se conservan y vuelven a funcionar al reconectar.
+              {appOnly
+                ? `Powip deja de preparar avisos para este número. El número sigue igual en el celular.`
+                : `Se pausan todos los avisos automáticos y envíos programados de ${storeName}. Tus plantillas y el historial se conservan y vuelven a funcionar al reconectar.`}
             </AlertDialogDescription>
             {disconnectState.kind === "error" && (
               <p role="alert" className="text-[13px] text-wa-red">
