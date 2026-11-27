@@ -83,6 +83,10 @@ export function toCreateSunatDocumentsRequestDto(
           ? { referenceUnitValue: item.referenceUnitValue }
           : {}),
       })),
+      ...(document.isPrepayment ? { isPrepayment: true } : {}),
+      ...(!document.isPrepayment && document.prepaymentDocumentIds?.length
+        ? { prepaymentDocumentIds: document.prepaymentDocumentIds }
+        : {}),
     })),
   };
 }

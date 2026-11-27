@@ -44,6 +44,26 @@ export interface SunatDocumentPayloadResponseDto {
   items: SunatDocumentLineItemResponseDto[];
   /** Credit/debit notes only: SUNAT reason (catalog 09/10). */
   discrepancyResponse?: { reasonCode: string; reasonDescription: string };
+  /** The document is an anticipo (advance payment). */
+  isPrepayment?: boolean;
+  /** Final document: anticipos it deducts. Its totals are already net of them. */
+  prepayments?: SunatDocumentPrepaymentResponseDto[];
+}
+
+/** Anticipo deducted by a final document (snapshot stored by the backend). */
+export interface SunatDocumentPrepaymentResponseDto {
+  documentId: string;
+  taxDocumentType: "01" | "03";
+  series: string;
+  correlative: string;
+  rucIssuer: string;
+  issueDate: string;
+  taxType: "10" | "20" | "30";
+  /** Base without IGV. */
+  taxableAmount: number;
+  taxAmount: number;
+  /** Total paid with the anticipo. */
+  amount: number;
 }
 
 export interface SunatDocumentResponseDto {

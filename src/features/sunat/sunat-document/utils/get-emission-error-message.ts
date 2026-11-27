@@ -22,6 +22,16 @@ const EMISSION_ERROR_MESSAGES: Record<string, string> = {
   SUNAT_REFERENCE_DOCUMENT_ISSUER_UNAVAILABLE:
     "El RUC que emitió el comprobante original ya no está activo en tu empresa.",
   SUNAT_REFERENCE_DOCUMENT_NOT_FOUND: "No se encontró el comprobante original.",
+  SUNAT_PREPAYMENT_NOT_DEDUCTED:
+    "Esta venta tiene anticipos sin descontar. Emite el comprobante final desde «Emitir» para que se descuenten. No se usó ningún número.",
+  SUNAT_PREPAYMENT_NOT_DEDUCTIBLE:
+    "Un anticipo no se puede descontar: debe estar aceptado por SUNAT, ser del mismo RUC y del mismo tipo (boleta con boleta, factura con factura), y no estar anulado. No se usó ningún número.",
+  SUNAT_PREPAYMENT_EXCEEDS_SALE:
+    "Los anticipos suman más que la venta. Revisa los montos. No se usó ningún número.",
+  SUNAT_PREPAYMENT_TAX_TYPE_INVALID:
+    "Un anticipo solo puede tener un tipo de afectación (gravado o exonerado). No se usó ningún número.",
+  SUNAT_PREPAYMENT_CREDIT_NOTE_NOT_ALLOWED:
+    "No se puede emitir esta nota: el anticipo ya se descontó en el comprobante final, o el comprobante final descuenta anticipos. Consúltalo con tu contador.",
 };
 
 export const GENERIC_EMISSION_ERROR_MESSAGE =

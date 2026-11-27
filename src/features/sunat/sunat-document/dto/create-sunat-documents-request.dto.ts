@@ -53,6 +53,10 @@ export interface SunatDocumentRequestDto {
   referenceDocumentId?: string;
   /** SUNAT "sustento" (catalog 09 for credit notes). Required for 07/08 only. */
   reason?: { code: string; description: string };
+  /** Anticipo (advance payment): an ordinary boleta/factura for the amount received. */
+  isPrepayment?: boolean;
+  /** Final document: ids of the order's anticipos it deducts. */
+  prepaymentDocumentIds?: string[];
 }
 
 export interface CreateSunatDocumentsRequestDto {
