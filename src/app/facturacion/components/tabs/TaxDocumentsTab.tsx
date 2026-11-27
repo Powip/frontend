@@ -933,6 +933,16 @@ export function TaxDocumentsTab({
                           data-testid="numero-comprobante"
                         >
                           {getNumeroComprobanteEmitido(row)}
+                          {row.cancelledDocuments?.map((cancelled) => (
+                            <div
+                              key={cancelled.id}
+                              className="text-[10px] text-muted-foreground line-through"
+                              data-testid="comprobante-anulado-nc"
+                              title="Anulado por nota de crédito"
+                            >
+                              {documentNumberOf(cancelled)} · anulado por NC
+                            </div>
+                          ))}
                           {row.prepayments?.map((prepayment) => (
                             <div
                               key={prepayment.id}

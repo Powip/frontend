@@ -14,4 +14,10 @@ export interface TaxDocumentRow {
    * never fill `taxDocument`: the final comprobante deducts them.
    */
   prepayments?: SunatDocument[];
+  /**
+   * Facturas/boletas of this sale that credit notes cancelled in full. They
+   * never fill `taxDocument` (the sale can be emitted again); the row lists
+   * them as history.
+   */
+  cancelledDocuments?: SunatDocument[];
 }
