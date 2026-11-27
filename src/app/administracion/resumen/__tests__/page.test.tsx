@@ -326,11 +326,13 @@ describe("Resumen de Administración", () => {
     escenarioCompleto();
     renderPagina();
     const semaforo = seccion(/Semáforo contra entrega/);
-    // 160 ÷ 2 pedidos = S/ 80 → rojo; 1770 ÷ 160 = 11,1x → verde; margen 27,1 % → ámbar.
+    // 160 ÷ 2 pedidos = S/ 80 = 9 % del ticket (885) → verde; 1770 ÷ 160 = 11,1x → verde; margen 27,1 % sin meta
+    // (referencia 20–28 %) → ámbar.
     expect(within(semaforo).getByText(formatSoles(80))).toBeInTheDocument();
+    expect(within(semaforo).getByText("· 9 % del ticket")).toBeInTheDocument();
     expect(within(semaforo).getByText(formatVeces(1770 / 160))).toBeInTheDocument();
     expect(within(semaforo).getByText(formatPercent(480 / 1770, 1))).toBeInTheDocument();
-    expect(within(semaforo).getByText("2 indicadores en alerta")).toBeInTheDocument();
+    expect(within(semaforo).getByText("1 indicador en alerta")).toBeInTheDocument();
   });
 
   it("dice «Superado» solo si las ventas pasan el punto de equilibrio", () => {
@@ -408,5 +410,256 @@ describe("Resumen de Administración", () => {
     expect(
       screen.getByRole("status", { name: "Cargando indicadores del periodo" }),
     ).toBeInTheDocument();
+  });
+});
+
+// ---- Semáforo contra entrega: umbrales (FEAT-34 punto 5) ---------------------------------------
+
+const RANGO_ANTERIOR = { desde: "2026-10-01", hasta: "2026-10-31" };
+
+/** Venta entregada de `total` con el costo de su única línea (`costo` 0 = sin costo; `precioLista` la marca dudosa). */
+const venta = (id: string, total: number, costo: number, precioLista?: number): PedidoAdmin => ({
+  id,
+  status: "ENTREGADO",
+  grandTotal: total,
+  created_at: NOV,
+  items: [{ lineKind: "PRODUCT", quantity: 1, unitCost: costo || undefined, unitPrice: precioLista }],
+});
+
+function renderSemaforo(
+  pedidos: PedidoAdmin[],
+  opciones: { publicidad?: number; metaMargenPct?: number | null; gastos?: IGastoOperativo[] } = {},
+) {
+  mockComparados.mockReturnValue({
+    actual: datos("2026-11-01", "2026-11-30", pedidos, {
+      publicidad: opciones.publicidad ? publicidadOk(opciones.publicidad) : undefined,
+      gastos: opciones.gastos,
+    }),
+    anterior: datos("2026-10-01", "2026-10-31", []),
+    rangoAnterior: RANGO_ANTERIOR,
+  });
+  mockMetas.mockReturnValue([
+    { ...SIN_METAS, margenObjetivoPct: opciones.metaMargenPct ?? null },
+    jest.fn(),
+  ]);
+  return renderPagina();
+}
+
+function indicador(nombre: string): HTMLElement {
+  const fila = screen.getByText(nombre).closest("li");
+  if (!fila) throw new Error(`No se encontró el indicador ${nombre}`);
+  return fila;
+}
+
+describe("Semáforo contra entrega: margen operativo", () => {
+  // Una venta de S/ 1.000 sin otros gastos: margen = (1.000 − costo) ÷ 1.000.
+  it.each([
+    ["en la meta exacta", 800, "Bien"],
+    ["a una décima de la meta", 801, "Atención"],
+    ["8 puntos por debajo (borde del ámbar)", 880, "Atención"],
+    ["más de 8 puntos por debajo", 881, "Alerta"],
+  ])("con meta de 20 %%: %s", (_caso, costo, etiqueta) => {
+    renderSemaforo([venta("a", 1000, costo)], { metaMargenPct: 20 });
+    const fila = indicador("Margen operativo");
+    expect(within(fila).getByText(etiqueta)).toBeInTheDocument();
+    expect(within(fila).getByText("Verde ≥ 20% · ámbar 12–20% · rojo < 12%")).toBeInTheDocument();
+    expect(within(fila).queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("con meta decimal muestra los umbrales con coma", () => {
+    renderSemaforo([venta("a", 1000, 700)], { metaMargenPct: 22.5 });
+    expect(
+      within(indicador("Margen operativo")).getByText("Verde ≥ 22,5% · ámbar 14,5–22,5% · rojo < 14,5%"),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    ["sobre el 28 %", 719, "Bien"],
+    ["justo en el 28 % (ámbar)", 720, "Atención"],
+    ["justo en el 20 % (ámbar)", 800, "Atención"],
+    ["bajo el 20 %", 801, "Alerta"],
+  ])("sin meta usa la referencia general: %s", (_caso, costo, etiqueta) => {
+    renderSemaforo([venta("a", 1000, costo)]);
+    const fila = indicador("Margen operativo");
+    expect(within(fila).getByText(etiqueta)).toBeInTheDocument();
+    expect(
+      within(fila).getByText("Referencia general (28 % / 20 %) · carga tu meta de margen"),
+    ).toBeInTheDocument();
+    expect(within(fila).getByRole("link", { name: "Cargar meta de margen →" })).toHaveAttribute(
+      "href",
+      "/administracion/anual",
+    );
+  });
+});
+
+describe("Semáforo contra entrega: retorno de publicidad", () => {
+  // Una venta de S/ 1.000: retorno = 1.000 ÷ publicidad. Meta del Panel: 4x, tolerancia 20 % (cerca desde 3,2x).
+  it.each([
+    ["en la meta (4x)", 250, "4.0x", "Bien"],
+    ["sobre la meta", 100, "10.0x", "Bien"],
+    ["en el borde de cerca (3,2x)", 312.5, "3.2x", "Atención"],
+    ["bajo el borde de cerca", 313, "3.2x", "Alerta"],
+  ])("%s", (_caso, publicidad, valor, etiqueta) => {
+    renderSemaforo([venta("a", 1000, 500)], { publicidad });
+    const fila = indicador("Retorno de publicidad");
+    expect(within(fila).getByText(valor)).toBeInTheDocument();
+    expect(within(fila).getByText(etiqueta)).toBeInTheDocument();
+    expect(within(fila).getByText("Verde ≥ 4x · ámbar 3,2–4x · rojo < 3,2x")).toBeInTheDocument();
+  });
+
+  it("sin publicidad no hay retorno que evaluar", () => {
+    renderSemaforo([venta("a", 1000, 500)]);
+    const fila = indicador("Retorno de publicidad");
+    expect(within(fila).getByText("Sin datos")).toBeInTheDocument();
+    expect(within(fila).getByText("Sin publicidad registrada en el periodo")).toBeInTheDocument();
+  });
+});
+
+describe("Semáforo contra entrega: costo de publicidad por venta", () => {
+  // Una venta de S/ 1.000: el costo por venta es la publicidad entera y el ticket promedio S/ 1.000.
+  it.each([
+    ["bajo el 11 %", 109, "Bien", "· 10,9 % del ticket"],
+    ["justo en el 11 % (ámbar)", 110, "Atención", "· 11 % del ticket"],
+    ["justo en el 14 % (ámbar)", 140, "Atención", "· 14 % del ticket"],
+    ["sobre el 14 %", 141, "Alerta", "· 14,1 % del ticket"],
+  ])("%s", (_caso, publicidad, etiqueta, extra) => {
+    renderSemaforo([venta("a", 1000, 500)], { publicidad });
+    const fila = indicador("Costo de publicidad por venta");
+    expect(within(fila).getByText(formatSoles(publicidad))).toBeInTheDocument();
+    expect(within(fila).getByText(extra)).toBeInTheDocument();
+    expect(within(fila).getByText(etiqueta)).toBeInTheDocument();
+    expect(
+      within(fila).getByText("Verde < 11 % del ticket · ámbar 11–14 % · rojo > 14 %"),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    // El % se redondea a 1 decimal, que es lo que se muestra: el nivel sale del mismo valor que el texto.
+    ["10,96 % se ve «11 %» y es ámbar, no verde", 109.6, "S/ 110", "· 11 % del ticket", "Atención"],
+    ["14,04 % se ve «14 %» y es ámbar, no rojo", 140.4, "S/ 140", "· 14 % del ticket", "Atención"],
+    ["10,94 % se ve «10,9 %» y es verde", 109.4, "S/ 109", "· 10,9 % del ticket", "Bien"],
+    ["14,06 % se ve «14,1 %» y es rojo", 140.6, "S/ 141", "· 14,1 % del ticket", "Alerta"],
+  ])("el nivel y el texto salen del mismo valor redondeado: %s", (_caso, publicidad, soles, extra, etiqueta) => {
+    renderSemaforo([venta("a", 1000, 500)], { publicidad });
+    const fila = indicador("Costo de publicidad por venta");
+    expect(within(fila).getByText(soles)).toBeInTheDocument();
+    expect(within(fila).getByText(extra)).toBeInTheDocument();
+    expect(within(fila).getByText(etiqueta)).toBeInTheDocument();
+  });
+
+  it.each([
+    // Con 3 pedidos, (publicidad ÷ 3) ÷ (ventas ÷ 3) da 0,10999… y 0,14000…04: sin redondear, el 11 % exacto caía en
+    // verde y el 14 % exacto en rojo.
+    ["11 % exacto con 3 pedidos", [100, 100, 200], 44, "· 11 % del ticket"],
+    ["14 % exacto con 3 pedidos", [300, 300, 370], 135.8, "· 14 % del ticket"],
+  ])("sin ruido de coma flotante en los bordes: %s", (_caso, totales, publicidad, extra) => {
+    renderSemaforo(
+      totales.map((total, i) => venta(`v${i}`, total, 1)),
+      { publicidad },
+    );
+    const fila = indicador("Costo de publicidad por venta");
+    expect(within(fila).getByText(extra)).toBeInTheDocument();
+    expect(within(fila).getByText("Atención")).toBeInTheDocument();
+    expect(within(fila).queryByText("Bien")).not.toBeInTheDocument();
+    expect(within(fila).queryByText("Alerta")).not.toBeInTheDocument();
+  });
+
+  it("reparte la publicidad entre los pedidos y la compara con el ticket promedio", () => {
+    // 200 ÷ 2 pedidos = S/ 100 por venta; ticket promedio S/ 500 → 20 %.
+    renderSemaforo([venta("a", 500, 100), venta("b", 500, 100)], { publicidad: 200 });
+    const fila = indicador("Costo de publicidad por venta");
+    expect(within(fila).getByText(formatSoles(100))).toBeInTheDocument();
+    expect(within(fila).getByText("· 20 % del ticket")).toBeInTheDocument();
+    expect(within(fila).getByText("Alerta")).toBeInTheDocument();
+  });
+
+  it("con ticket promedio 0 queda sin datos (no divide por cero)", () => {
+    renderSemaforo([venta("a", 0, 0)], { publicidad: 50 });
+    const fila = indicador("Costo de publicidad por venta");
+    expect(within(fila).getByText("Sin datos")).toBeInTheDocument();
+    expect(within(fila).queryByText(/^· .* del ticket$/)).not.toBeInTheDocument();
+  });
+
+  it("sin publicidad queda sin datos", () => {
+    renderSemaforo([venta("a", 1000, 500)]);
+    const fila = indicador("Costo de publicidad por venta");
+    expect(within(fila).getByText("Sin datos")).toBeInTheDocument();
+    expect(within(fila).queryByText(/^· .* del ticket$/)).not.toBeInTheDocument();
+  });
+});
+
+describe("Semáforo contra entrega: costos dudosos", () => {
+  const AYUDA = "Hay ventas con costo igual o mayor que el precio: revisa los costos en Productos";
+  /** 1 venta dudosa (costo = precio de lista) y `normales` ventas de S/ 100 con costo `costo` (sin precio de lista). */
+  const conDudosa = (normales: number, costo: number, sinCosto = 0): PedidoAdmin[] => [
+    venta("dudosa", 100, 100, 100),
+    ...Array.from({ length: normales }, (_, i) => venta(`n${i}`, 100, costo)),
+    ...Array.from({ length: sinCosto }, (_, i) => venta(`s${i}`, 100, 0)),
+  ];
+
+  it("con el 10 % de las ventas dudosas y el margen en rojo pide revisar los costos", () => {
+    // 10 ventas con costo, 1 dudosa (10 %): margen (1.000 − 100 − 9 × 90) ÷ 1.000 = 9 % → rojo → ámbar.
+    renderSemaforo(conDudosa(9, 90));
+    const fila = indicador("Margen operativo");
+    expect(within(fila).getByText("Revisar costos")).toBeInTheDocument();
+    expect(within(fila).queryByText("Alerta")).not.toBeInTheDocument();
+    expect(within(fila).queryByText("Atención")).not.toBeInTheDocument();
+    expect(within(fila).getByText(AYUDA)).toBeInTheDocument();
+    expect(within(fila).getByRole("link", { name: "Ir a Productos →" })).toHaveAttribute(
+      "href",
+      "/productos",
+    );
+    expect(within(fila).queryByRole("link", { name: /Cargar meta/ })).not.toBeInTheDocument();
+    // El indicador sigue contando como en alerta (ámbar) en el resumen del semáforo.
+    expect(screen.getByText("1 indicador en alerta")).toBeInTheDocument();
+  });
+
+  it("también con meta de margen cargada", () => {
+    renderSemaforo(conDudosa(9, 90), { metaMargenPct: 30 });
+    expect(within(indicador("Margen operativo")).getByText("Revisar costos")).toBeInTheDocument();
+  });
+
+  it("el porcentaje es sobre las ventas con costo, no sobre todas", () => {
+    // 11 ventas: 2 sin costo, 9 con costo y 1 dudosa → 1 de 9 = 11 % (sobre las 11 sería 9 %).
+    // Margen (1.100 − 100 − 8 × 99) ÷ 1.100 = 18,9 % → rojo → «Revisar costos».
+    renderSemaforo(conDudosa(8, 99, 2));
+    expect(within(indicador("Margen operativo")).getByText("Revisar costos")).toBeInTheDocument();
+  });
+
+  it("con menos del 10 % de ventas dudosas el margen en rojo sigue en rojo", () => {
+    // 11 ventas con costo, 1 dudosa (9,1 %): margen (1.100 − 100 − 10 × 95) ÷ 1.100 = 4,5 % → rojo.
+    renderSemaforo(conDudosa(10, 95));
+    const fila = indicador("Margen operativo");
+    expect(within(fila).getByText("Alerta")).toBeInTheDocument();
+    expect(within(fila).queryByText("Revisar costos")).not.toBeInTheDocument();
+    expect(within(fila).queryByText(AYUDA)).not.toBeInTheDocument();
+    expect(within(fila).queryByRole("link", { name: "Ir a Productos →" })).not.toBeInTheDocument();
+  });
+
+  it("sin ventas con costo no hay dudosos: el margen en rojo sigue en rojo", () => {
+    // Todas las ventas sin costo cargado (0 ventas con costo, 0 dudosas) y el margen en rojo por los gastos fijos:
+    // sin la guarda de «ventas con costo > 0», 0 × 10 ≥ 0 activaría «Revisar costos».
+    renderSemaforo([venta("a", 1000, 0), venta("b", 1000, 0)], { gastos: [gasto({ monto: 3000 })] });
+    const fila = indicador("Margen operativo");
+    expect(within(fila).getByText("Alerta")).toBeInTheDocument();
+    expect(within(fila).queryByText("Revisar costos")).not.toBeInTheDocument();
+    expect(within(fila).queryByText(AYUDA)).not.toBeInTheDocument();
+    expect(within(fila).queryByRole("link", { name: "Ir a Productos →" })).not.toBeInTheDocument();
+  });
+
+  it("con costos dudosos pero margen en ámbar o verde no cambia nada", () => {
+    // 10 ventas, 1 dudosa (10 %). Margen (1.000 − 100 − 9 × 70) ÷ 1.000 = 27 % → ámbar (sin meta).
+    const { unmount } = renderSemaforo(conDudosa(9, 70));
+    let fila = indicador("Margen operativo");
+    expect(within(fila).getByText("Atención")).toBeInTheDocument();
+    expect(within(fila).queryByText("Revisar costos")).not.toBeInTheDocument();
+    expect(within(fila).queryByText(AYUDA)).not.toBeInTheDocument();
+    unmount();
+
+    // Margen (1.000 − 100 − 9 × 60) ÷ 1.000 = 36 % → verde.
+    renderSemaforo(conDudosa(9, 60));
+    fila = indicador("Margen operativo");
+    expect(within(fila).getByText("Bien")).toBeInTheDocument();
+    expect(within(fila).queryByText("Revisar costos")).not.toBeInTheDocument();
   });
 });
