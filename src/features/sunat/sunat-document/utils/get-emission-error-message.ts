@@ -30,6 +30,8 @@ const EMISSION_ERROR_MESSAGES: Record<string, string> = {
     "Los anticipos suman más que la venta. Revisa los montos. No se usó ningún número.",
   SUNAT_PREPAYMENT_TAX_TYPE_INVALID:
     "Un anticipo solo puede tener un tipo de afectación (gravado o exonerado). No se usó ningún número.",
+  SUNAT_CREDIT_NOTE_EXCEEDS_BALANCE:
+    "La nota de crédito supera el saldo por acreditar del comprobante (puede que ya tenga otra nota). Actualiza la página y revisa la pestaña Notas. No se usó ningún número.",
   SUNAT_PREPAYMENT_CREDIT_NOTE_NOT_ALLOWED:
     "No se puede emitir esta nota: el anticipo ya se descontó en el comprobante final, o el comprobante final descuenta anticipos. Consúltalo con tu contador.",
 };
