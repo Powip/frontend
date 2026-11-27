@@ -27,6 +27,10 @@ export interface SunatProfileResponseDto {
 
   isDefault: boolean;
   isActive: boolean;
+  /** Opcional: las versiones viejas de ms-sunat no lo mandan. */
+  deactivationReason?: "UNPAID" | null;
+  /** Opcional: última vez que se activó; las versiones viejas de ms-sunat no lo mandan. */
+  activatedAt?: string | null;
 
   createdAt: string;
   updatedAt: string;

@@ -4,29 +4,36 @@ import { AlertTriangle, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { InactiveIssuersAlert } from "@/app/facturacion/components/InactiveIssuersAlert";
 import { IssuerAccessAlerts } from "@/app/facturacion/components/IssuerAccessAlerts";
 import { ALL_ISSUERS, IssuerFilterSelect } from "@/app/facturacion/components/IssuerFilterSelect";
+import { AddIssuerFlow } from "@/app/facturacion/components/modals/AddIssuerFlow";
 import NotaCreditoModal from "@/app/facturacion/components/modals/NotaCreditoModal";
 import { AyudaTab } from "@/app/facturacion/components/tabs/AyudaTab";
 import { CertificadoTab } from "@/app/facturacion/components/tabs/CertificadoTab";
 import { EmisoresTab } from "@/app/facturacion/components/tabs/EmisoresTab";
 import { GuiasTab } from "@/app/facturacion/components/tabs/GuiasTab";
 import { NotasTab } from "@/app/facturacion/components/tabs/NotasTab";
-import { abrirPdfNota, toNotaReporte } from "@/app/facturacion/lib/notas-credito";
 import { ReportesTab } from "@/app/facturacion/components/tabs/ReportesTab";
 import { SeriesTab } from "@/app/facturacion/components/tabs/SeriesTab";
+import { abrirPdfNota, toNotaReporte } from "@/app/facturacion/lib/notas-credito";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/AuthContext";
+import { useExtraRucSummary } from "@/features/sunat/extra-ruc/hooks/use-extra-ruc-summary";
+import type { ExtraRucPurchase } from "@/features/sunat/extra-ruc/models/extra-ruc";
+import { DEFAULT_EXTRA_RUC_PRICE } from "@/features/sunat/extra-ruc/utils/ruc-slots";
 import { useSunatDocumentPdf } from "@/features/sunat/sunat-document/hooks/use-sunat-document-pdf";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 import { getCreditableBalance } from "@/features/sunat/sunat-document/utils/build-credit-note-request";
 import { useSunatProfiles } from "@/features/sunat/sunat-profile/hooks/use-sunat-profiles";
+import type { SunatProfile } from "@/features/sunat/sunat-profile/models/sunat-profile";
 import { getCertificateStatus } from "@/features/sunat/sunat-profile/utils/get-certificate-status";
 import { getDefaultIssuer } from "@/features/sunat/sunat-profile/utils/issuers";
 import { useFacturacionMock } from "@/hooks/useFacturacionMock";
 import { useTaxDocuments } from "@/hooks/useTaxDocuments";
 import { cn } from "@/lib/utils";
+import { isPaidNotRenewing } from "./components/ExtraRucSlotsCard";
 import { TaxDocumentsTab } from "./components/tabs/TaxDocumentsTab";
 
 export default function FacturacionPage() {
@@ -41,6 +48,63 @@ export default function FacturacionPage() {
   const mock = useFacturacionMock();
 
   const { data: sunatProfiles = [], isLoading: profilesLoading } = useSunatProfiles();
+  const { data: extraRucSummary } = useExtraRucSummary();
+
+  // Agregar RUC (incluido o de pago). Al volver de la pasarela con el cupo pagado llegan nuevoRuc y razonSocial:
+  // se abre directo la subida del certificado con esos datos.
+  const [addIssuerOpen, setAddIssuerOpen] = useState(false);
+  const [paidIdentity, setPaidIdentity] = useState<
+    { ruc: string; razonSocial: string } | undefined
+  >();
+  const [reactivate, setReactivate] = useState<
+    { ruc: string; razonSocial: string; profileId: string } | undefined
+  >();
+  const [repay, setRepay] = useState<
+    { ruc: string; razonSocial: string; paidUntil?: string | null } | undefined
+  >();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paidRuc = params.get("nuevoRuc");
+    const paidRazonSocial = params.get("razonSocial");
+
+    if (paidRuc && paidRazonSocial) {
+      setPaidIdentity({ ruc: paidRuc, razonSocial: paidRazonSocial });
+      setReactivate(undefined);
+      setRepay(undefined);
+      setAddIssuerOpen(true);
+      setActiveTab("emisores");
+      // Limpia la URL para que recargar la página no vuelva a abrir el modal.
+      router.replace("/facturacion");
+    }
+  }, [router]);
+
+  const openAddIssuer = () => {
+    setPaidIdentity(undefined);
+    setReactivate(undefined);
+    setRepay(undefined);
+    setAddIssuerOpen(true);
+  };
+
+  const openReactivate = (profile: SunatProfile) => {
+    setPaidIdentity(undefined);
+    setReactivate({ ruc: profile.ruc, razonSocial: profile.razonSocial, profileId: profile.id });
+    setRepay(undefined);
+    setAddIssuerOpen(true);
+  };
+
+  // Volver a pagar un cupo dado de baja o vencido (tarjeta de cupos).
+  const openRepay = (purchase: ExtraRucPurchase) => {
+    setPaidIdentity(undefined);
+    setReactivate(undefined);
+    // Si sigue pagado (dado de baja, aún vigente), el mes nuevo empieza al vencer: se avisa en el modal.
+    setRepay({
+      ruc: purchase.ruc,
+      razonSocial: purchase.razonSocial,
+      paidUntil: isPaidNotRenewing(purchase) ? purchase.activeUntil : null,
+    });
+    setAddIssuerOpen(true);
+  };
 
   const activeProfiles = sunatProfiles.filter((profile) => profile.isActive);
 
@@ -109,6 +173,15 @@ export default function FacturacionPage() {
 
   const isRefreshing = taxDocuments.loading;
 
+  // Rejected documents per RUC, for the badge on each RUC chip.
+  const failuresByRuc: Record<string, number> = {};
+  for (const row of taxDocuments.rows) {
+    if (row.taxDocument?.cdrStatus === "REJECTED") {
+      failuresByRuc[row.taxDocument.rucIssuer] =
+        (failuresByRuc[row.taxDocument.rucIssuer] ?? 0) + 1;
+    }
+  }
+
   return (
     <div className="facturacion-theme mx-auto max-w-7xl space-y-6 p-6">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
@@ -122,12 +195,6 @@ export default function FacturacionPage() {
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <IssuerFilterSelect
-            profiles={sunatProfiles}
-            value={issuerFilter}
-            onChange={setIssuerSelection}
-          />
-
           <Button onClick={refreshAll} variant="outline" className="gap-2" disabled={isRefreshing}>
             <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
             Actualizar Lista
@@ -186,6 +253,25 @@ export default function FacturacionPage() {
           </div>
         </div>
       ))}
+
+      {/* RUC desactivados: para usarlos hay que pagar su cupo (S/ 30/mes cada uno) */}
+      <InactiveIssuersAlert
+        profiles={sunatProfiles}
+        pricePerRuc={extraRucSummary?.pricePerRuc ?? DEFAULT_EXTRA_RUC_PRICE}
+        summary={extraRucSummary}
+        onManage={() => setActiveTab("emisores")}
+        onPay={openReactivate}
+      />
+
+      {/* RUC emisor (multi-RUC): chips between the alerts and the tabs */}
+      <IssuerFilterSelect
+        profiles={sunatProfiles}
+        value={issuerFilter}
+        onChange={setIssuerSelection}
+        failuresByRuc={failuresByRuc}
+        onAddIssuer={openAddIssuer}
+        summary={extraRucSummary}
+      />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="h-auto flex-wrap gap-1 bg-transparent p-0">
@@ -301,11 +387,14 @@ export default function FacturacionPage() {
               setIssuerSelection(profileId);
               setActiveTab(tab);
             }}
+            onAddIssuer={openAddIssuer}
+            onReactivate={openReactivate}
+            onRepay={openRepay}
           />
         </TabsContent>
 
         <TabsContent value="cert" className="pt-4">
-          <CertificadoTab />
+          <CertificadoTab onAddIssuer={openAddIssuer} />
         </TabsContent>
 
         <TabsContent value="series" className="pt-4">
@@ -316,6 +405,16 @@ export default function FacturacionPage() {
           <AyudaTab />
         </TabsContent>
       </Tabs>
+
+      <AddIssuerFlow
+        // Al volver de la pasarela se espera a tener los RUC: si el pagado ya existe se activa, no se pide certificado.
+        isOpen={addIssuerOpen && !(paidIdentity && profilesLoading)}
+        onClose={() => setAddIssuerOpen(false)}
+        profiles={sunatProfiles}
+        paidIdentity={paidIdentity}
+        reactivate={reactivate}
+        repay={repay}
+      />
 
       <NotaCreditoModal
         isOpen={ncOpen}

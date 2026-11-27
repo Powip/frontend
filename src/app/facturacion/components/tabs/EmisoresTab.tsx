@@ -1,8 +1,9 @@
 "use client";
 
 import { Plus } from "lucide-react";
-import { useState } from "react";
-import CertificadoUploadModal from "@/app/facturacion/components/modals/CertificadoUploadModal";
+import { useRef, useState } from "react";
+import { toast } from "sonner";
+import { ExtraRucSlotsCard } from "@/app/facturacion/components/ExtraRucSlotsCard";
 import { EstablishmentCodeModal } from "@/app/facturacion/components/modals/EstablishmentCodeModal";
 import { TaxRegimeModal } from "@/app/facturacion/components/modals/TaxRegimeModal";
 import { Badge } from "@/components/ui/badge";
@@ -16,18 +17,31 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import type { ExtraRucPurchase } from "@/features/sunat/extra-ruc/models/extra-ruc";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 import { useSunatDocumentSequences } from "@/features/sunat/sunat-document-sequence/hooks/use-sunat-document-sequences";
+import { useActivateSunatProfile } from "@/features/sunat/sunat-profile/hooks/use-activate-sunat-profile";
+import { useDeactivateSunatProfile } from "@/features/sunat/sunat-profile/hooks/use-deactivate-sunat-profile";
 import { useSetDefaultSunatProfile } from "@/features/sunat/sunat-profile/hooks/use-set-default-sunat-profie";
 import { useSunatProfiles } from "@/features/sunat/sunat-profile/hooks/use-sunat-profiles";
 import type { SunatProfile } from "@/features/sunat/sunat-profile/models/sunat-profile";
 import { getCertificateStatus } from "@/features/sunat/sunat-profile/utils/get-certificate-status";
+import {
+  getSunatProfileErrorMessage,
+  isRucLimitError,
+} from "@/features/sunat/sunat-profile/utils/sunat-profile-error.util";
 import { isNuevoRus } from "@/features/sunat/sunat-profile/utils/tax-regime";
 
 interface EmisoresTabProps {
   comprobanteRows: TaxDocumentRow[];
   /** Selects this RUC in the bar and opens the given tab. */
   onOpenIssuer: (profileId: string, tab: "comprobantes" | "series") => void;
+  /** Abre el flujo de agregar RUC (incluido o de pago). */
+  onAddIssuer: () => void;
+  /** Un RUC desactivado no tiene cupo libre: abre el flujo para pagar su cupo con sus datos ya cargados. */
+  onReactivate: (profile: SunatProfile) => void;
+  /** Cupo dado de baja o vencido: abre el pago de ese RUC con sus datos ya cargados. */
+  onRepay?: (purchase: ExtraRucPurchase) => void;
 }
 
 /**
@@ -35,16 +49,40 @@ interface EmisoresTabProps {
  * certificate, series and documents. Profiles are created and their
  * certificates managed from the "Certificado Digital" tab.
  */
-export function EmisoresTab({ comprobanteRows, onOpenIssuer }: EmisoresTabProps) {
-  const [createOpen, setCreateOpen] = useState(false);
+export function EmisoresTab({
+  comprobanteRows,
+  onOpenIssuer,
+  onAddIssuer,
+  onReactivate,
+  onRepay,
+}: EmisoresTabProps) {
   const [editingCode, setEditingCode] = useState<SunatProfile | null>(null);
   const [editingRegime, setEditingRegime] = useState<SunatProfile | null>(null);
   const { data: profiles = [], isLoading } = useSunatProfiles();
   const setDefaultProfile = useSetDefaultSunatProfile();
+  const deactivateProfile = useDeactivateSunatProfile();
 
+  // El RUC que se está activando: si no hay cupo libre (402) se abre el pago de su cupo con sus datos.
+  const activatingRef = useRef<SunatProfile | null>(null);
+  const activateProfile = useActivateSunatProfile({
+    onError: (error) => {
+      const profile = activatingRef.current;
+
+      if (profile && isRucLimitError(error)) {
+        onReactivate(profile);
+        return;
+      }
+
+      toast.error(getSunatProfileErrorMessage(error));
+    },
+  });
+
+  // Activos primero (predeterminado arriba) y después los desactivados, que se pueden volver a activar.
   const ordered = [...profiles].sort(
     (a, b) =>
-      Number(b.isDefault) - Number(a.isDefault) || a.razonSocial.localeCompare(b.razonSocial, "es"),
+      Number(b.isActive) - Number(a.isActive) ||
+      Number(b.isDefault) - Number(a.isDefault) ||
+      a.razonSocial.localeCompare(b.razonSocial, "es"),
   );
 
   return (
@@ -58,7 +96,7 @@ export function EmisoresTab({ comprobanteRows, onOpenIssuer }: EmisoresTabProps)
           </p>
         </div>
 
-        <Button className="gap-2" onClick={() => setCreateOpen(true)}>
+        <Button className="gap-2" onClick={onAddIssuer}>
           <Plus className="h-4 w-4" />
           Agregar RUC
         </Button>
@@ -106,8 +144,14 @@ export function EmisoresTab({ comprobanteRows, onOpenIssuer }: EmisoresTabProps)
                     onOpenIssuer={onOpenIssuer}
                     onMakeDefault={() => setDefaultProfile.mutate(profile.id)}
                     onEditEstablishmentCode={() => setEditingCode(profile)}
+                    onActivate={() => {
+                      activatingRef.current = profile;
+                      activateProfile.mutate(profile.id);
+                    }}
+                    onDeactivate={() => deactivateProfile.mutate(profile.id)}
                     onEditTaxRegime={() => setEditingRegime(profile)}
                     isMakingDefault={setDefaultProfile.isPending}
+                    isChangingActive={activateProfile.isPending || deactivateProfile.isPending}
                   />
                 ))
               )}
@@ -121,7 +165,7 @@ export function EmisoresTab({ comprobanteRows, onOpenIssuer }: EmisoresTabProps)
         emite con el RUC del comprobante que corrige.
       </div>
 
-      <CertificadoUploadModal isOpen={createOpen} onClose={() => setCreateOpen(false)} />
+      <ExtraRucSlotsCard onRepay={onRepay} />
 
       <EstablishmentCodeModal profile={editingCode} onClose={() => setEditingCode(null)} />
 
@@ -136,8 +180,11 @@ function EmisorRow(props: {
   onOpenIssuer: EmisoresTabProps["onOpenIssuer"];
   onMakeDefault: () => void;
   onEditEstablishmentCode: () => void;
+  onActivate: () => void;
+  onDeactivate: () => void;
   onEditTaxRegime: () => void;
   isMakingDefault: boolean;
+  isChangingActive: boolean;
 }) {
   const { profile, rows } = props;
   const { data: sequences = [] } = useSunatDocumentSequences(profile.id, {
@@ -231,20 +278,38 @@ function EmisorRow(props: {
 
       <TableCell>
         <div className="flex items-center justify-end gap-2 whitespace-nowrap">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => props.onOpenIssuer(profile.id, "comprobantes")}
-          >
-            Comprobantes
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => props.onOpenIssuer(profile.id, "series")}
-          >
-            Series
-          </Button>
+          {profile.isActive ? (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => props.onOpenIssuer(profile.id, "comprobantes")}
+              >
+                Comprobantes
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => props.onOpenIssuer(profile.id, "series")}
+              >
+                Series
+              </Button>
+              {!profile.isDefault && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={props.isChangingActive}
+                  onClick={props.onDeactivate}
+                >
+                  Desactivar
+                </Button>
+              )}
+            </>
+          ) : (
+            <Button size="sm" disabled={props.isChangingActive} onClick={props.onActivate}>
+              Activar
+            </Button>
+          )}
         </div>
       </TableCell>
     </TableRow>
