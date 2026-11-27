@@ -40,3 +40,32 @@ describe("toCreateSunatDocumentsRequestDto — RUC emisor", () => {
     expect(dto.documents[0]).not.toHaveProperty("sunatProfileId");
   });
 });
+
+describe("toCreateSunatDocumentsRequestDto — anticipos", () => {
+  it("un anticipo se envía marcado y sin anticipos a deducir", () => {
+    const dto = toCreateSunatDocumentsRequestDto({
+      documents: [
+        { ...buildSunatDocumentFromSale(sale), isPrepayment: true, prepaymentDocumentIds: ["a1"] },
+      ],
+    });
+
+    expect(dto.documents[0].isPrepayment).toBe(true);
+    expect(dto.documents[0]).not.toHaveProperty("prepaymentDocumentIds");
+  });
+
+  it("el comprobante final envía los anticipos que deduce", () => {
+    const dto = toCreateSunatDocumentsRequestDto({
+      documents: [{ ...buildSunatDocumentFromSale(sale), prepaymentDocumentIds: ["a1", "a2"] }],
+    });
+
+    expect(dto.documents[0].prepaymentDocumentIds).toEqual(["a1", "a2"]);
+    expect(dto.documents[0]).not.toHaveProperty("isPrepayment");
+  });
+
+  it("sin anticipos no envía los campos nuevos", () => {
+    const dto = toCreateSunatDocumentsRequestDto({ documents: [buildSunatDocumentFromSale(sale)] });
+
+    expect(dto.documents[0]).not.toHaveProperty("prepaymentDocumentIds");
+    expect(dto.documents[0]).not.toHaveProperty("isPrepayment");
+  });
+});

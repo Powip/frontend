@@ -14,6 +14,7 @@ import { SUNAT_DOCUMENT_TYPES } from "@/features/sunat/sunat-document/enums/suna
 import type { SunatDocument } from "@/features/sunat/sunat-document/models/sunat-document.model";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 import { fetchAllSunatDocuments } from "@/features/sunat/sunat-document/utils/fetch-all-sunat-documents";
+import { isPrepaymentDocument } from "@/features/sunat/sunat-document/utils/prepayments";
 import { computeTaxDocumentKpis } from "@/features/sunat/sunat-document/utils/tax-document-kpis";
 
 const isNoteDocument = (document: SunatDocument) =>
@@ -53,15 +54,32 @@ export function useTaxDocuments() {
    * whose only documents are notes still shows the newest one.
    *
    * `orderId` is the relation between the SUNAT document and the sale.
+   *
+   * Anticipos never take the row either: the sale still waits for its final
+   * comprobante. They are listed apart (`prepaymentsByOrderId`).
    */
   const documentByOrderId = useMemo(() => {
     const map = new Map<string, SunatDocument>();
 
     for (const document of documents) {
+      if (isPrepaymentDocument(document)) continue;
+
       const current = map.get(document.orderId);
       if (!current || (isNoteDocument(current) && !isNoteDocument(document))) {
         map.set(document.orderId, document);
       }
+    }
+
+    return map;
+  }, [documents]);
+
+  /** Anticipos of each sale, newest first. */
+  const prepaymentsByOrderId = useMemo(() => {
+    const map = new Map<string, SunatDocument[]>();
+
+    for (const document of documents) {
+      if (!isPrepaymentDocument(document)) continue;
+      map.set(document.orderId, [...(map.get(document.orderId) ?? []), document]);
     }
 
     return map;
@@ -88,9 +106,10 @@ export function useTaxDocuments() {
       .map((sale) => ({
         sale,
         taxDocument: documentByOrderId.get(sale.id),
+        prepayments: prepaymentsByOrderId.get(sale.id),
       }))
       .sort((a, b) => new Date(b.sale.createdAt).getTime() - new Date(a.sale.createdAt).getTime());
-  }, [sales, documentByOrderId, error]);
+  }, [sales, documentByOrderId, prepaymentsByOrderId, error]);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 
@@ -122,7 +141,14 @@ export function useTaxDocuments() {
         return;
       }
 
-      setSelectedIds(new Set(rows.filter((row) => !row.taxDocument).map((row) => row.sale.id)));
+      // A sale with anticipos is billed from "Emitir": its final must deduct them.
+      setSelectedIds(
+        new Set(
+          rows
+            .filter((row) => !row.taxDocument && !row.prepayments?.length)
+            .map((row) => row.sale.id),
+        ),
+      );
     },
     [rows],
   );

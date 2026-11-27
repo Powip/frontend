@@ -36,6 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toIdentityLookupDocumentType } from "@/features/identity-lookup/adapters/to-identity-lookup-document-type.adapter";
 import type { IdentityLookupResult } from "@/features/identity-lookup/models/identity-lookup-result.model";
 import type { Order } from "@/features/sales/models/order";
@@ -47,12 +48,20 @@ import {
   SUNAT_DOCUMENT_TYPES,
 } from "@/features/sunat/sunat-document/enums/sunat-document.enums";
 import { useCreateSunatDocuments } from "@/features/sunat/sunat-document/hooks/use-create-sunat-documents";
+import { useOrderPrepayments } from "@/features/sunat/sunat-document/hooks/use-order-prepayments";
 import { toCreateSunatDocumentsRequestDto } from "@/features/sunat/sunat-document/mappers/to-create-sunat-documents-request-dto.mapper";
 import type { CreateSunatDocumentsFormValues } from "@/features/sunat/sunat-document/schemas/create-sunat-documents.schema";
 import { createSunatDocumentsSchema } from "@/features/sunat/sunat-document/schemas/create-sunat-documents.schema";
 import { buildSunatDocumentFromSale } from "@/features/sunat/sunat-document/utils/build-sunat-document-from-sale";
 import { findLinesWithoutValue } from "@/features/sunat/sunat-document/utils/find-lines-without-value";
 import { getEmissionErrorMessage } from "@/features/sunat/sunat-document/utils/get-emission-error-message";
+import {
+  documentNumberOf,
+  grandTotalOf,
+  prepaidAmountOf,
+  prepaymentTaxTypeFor,
+  toPrepaymentDocument,
+} from "@/features/sunat/sunat-document/utils/prepayments";
 import { useSunatDocumentSequences } from "@/features/sunat/sunat-document-sequence/hooks/use-sunat-document-sequences";
 import type { SunatDocumentSequence } from "@/features/sunat/sunat-document-sequence/models/sunat-document-sequence";
 import { useIssuerSelection } from "@/features/sunat/sunat-profile/hooks/use-issuer-selection";
@@ -75,6 +84,11 @@ interface EmitirComprobanteModalProps {
 }
 
 type Step = "form" | "pipeline" | "ok" | "bad";
+
+/** "full": the sale's comprobante (deducts open anticipos). "prepayment": an anticipo. */
+type EmissionMode = "full" | "prepayment";
+
+const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
 /**
  * Resolves which series to stamp on the document for `taxDocumentType`:
@@ -185,6 +199,12 @@ export default function EmitirComprobanteModal({
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Anticipos: the seller either issues an anticipo for the amount received
+  // or the full comprobante, which deducts every open anticipo of the order.
+  const [mode, setMode] = useState<EmissionMode>("full");
+  const [prepaymentAmountInput, setPrepaymentAmountInput] = useState("");
+  const orderPrepayments = useOrderPrepayments(String(sale.id), isOpen);
+
   const documentType = useWatch({
     control: form.control,
     name: "documents.0.taxDocumentType",
@@ -228,6 +248,27 @@ export default function EmitirComprobanteModal({
   const defaultSequence = documentType ? getDefaultSequence(documentType, sequences) : undefined;
   const isIssuerBlocked = issuer.blockReason !== null;
 
+  const isPrepaymentMode = mode === "prepayment";
+  const currency = totals?.currency ?? "PEN";
+  const prepaidAmount = prepaidAmountOf(orderPrepayments.ready);
+  const pendingAmount = round2(grandTotal - prepaidAmount);
+  const prepaymentAmount = round2(Number(prepaymentAmountInput.replace(",", ".")) || 0);
+  const prepaymentTaxType = prepaymentTaxTypeFor(watchedItems ?? []);
+  // An anticipo cannot reach the sale's value: the last payment is the final comprobante.
+  const prepaymentAmountError =
+    prepaymentAmountInput.trim() === ""
+      ? null
+      : prepaymentAmount <= 0
+        ? "Ingresa un monto mayor a 0."
+        : prepaymentAmount >= pendingAmount
+          ? `Debe ser menor a lo que falta pagar (${currency} ${pendingAmount.toFixed(2)}). Si ya pagó todo, emite el comprobante completo.`
+          : null;
+  const isPrepaymentInvalid =
+    isPrepaymentMode && (prepaymentAmountInput.trim() === "" || prepaymentAmountError !== null);
+  // The final comprobante waits until SUNAT answers every anticipo.
+  const isWaitingForPrepayments = !isPrepaymentMode && orderPrepayments.waiting.length > 0;
+  const deductsPrepayments = !isPrepaymentMode && orderPrepayments.ready.length > 0;
+
   useEffect(() => {
     form.setValue("documents.0.sunatProfileId", issuerProfileIdSelected);
   }, [form, issuerProfileIdSelected]);
@@ -246,6 +287,8 @@ export default function EmitirComprobanteModal({
 
     setStep("form");
     setPipelineIndex(0);
+    setMode("full");
+    setPrepaymentAmountInput("");
   }, [isOpen, sale, form]);
 
   // Switching to a RUC with another regime changes every line's tax type and
@@ -337,7 +380,28 @@ export default function EmitirComprobanteModal({
       // trimming blanks and falling back to the "-" SUNAT placeholder for an
       // anonymous boleta customer, instead of duplicating (and drifting from)
       // that logic here.
-      const payload = toCreateSunatDocumentsRequestDto(values);
+      const [document] = values.documents;
+      const toSend: CreateSunatDocumentsFormValues = isPrepaymentMode
+        ? {
+            documents: [
+              toPrepaymentDocument(document, {
+                amount: prepaymentAmount,
+                orderNumber: sale.orderNumber,
+                taxType: prepaymentTaxType,
+              }),
+            ],
+          }
+        : {
+            documents: [
+              {
+                ...document,
+                isPrepayment: undefined,
+                // Full values go to the backend, which deducts these anticipos.
+                prepaymentDocumentIds: orderPrepayments.ready.map((prepayment) => prepayment.id),
+              },
+            ],
+          };
+      const payload = toCreateSunatDocumentsRequestDto(toSend);
 
       const response = await createSunatDocuments.mutateAsync(payload);
 
@@ -433,8 +497,17 @@ export default function EmitirComprobanteModal({
               <DialogDescription>
                 Venta <span className="font-bold text-foreground">{sale.orderNumber}</span> — Total{" "}
                 <span className="font-bold text-primary">
-                  {totals?.currency ?? "PEN"} {grandTotal.toFixed(2)}
+                  {currency} {grandTotal.toFixed(2)}
                 </span>
+                {prepaidAmount > 0 && (
+                  <>
+                    {" "}
+                    · Falta pagar{" "}
+                    <span className="font-bold text-foreground">
+                      {currency} {pendingAmount.toFixed(2)}
+                    </span>
+                  </>
+                )}
               </DialogDescription>
             </DialogHeader>
 
@@ -445,6 +518,28 @@ export default function EmitirComprobanteModal({
               >
                 <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
                   <div className="grid gap-5">
+                    <div className="grid gap-2">
+                      <Label>¿Qué vas a emitir?</Label>
+
+                      <Tabs value={mode} onValueChange={(value) => setMode(value as EmissionMode)}>
+                        <TabsList className="grid w-full grid-cols-2">
+                          <TabsTrigger value="full" disabled={isPending}>
+                            Comprobante de la venta
+                          </TabsTrigger>
+                          <TabsTrigger value="prepayment" disabled={isPending}>
+                            Anticipo (adelanto)
+                          </TabsTrigger>
+                        </TabsList>
+                      </Tabs>
+
+                      {isPrepaymentMode && (
+                        <p className="text-xs text-muted-foreground">
+                          El cliente pagó una parte antes de la entrega. Al cobrar el resto emite el
+                          comprobante de la venta: el anticipo se descuenta solo.
+                        </p>
+                      )}
+                    </div>
+
                     <IssuerSelectField
                       selection={issuer}
                       disabled={isPending}
@@ -669,79 +764,177 @@ export default function EmitirComprobanteModal({
                       )}
                     </div>
 
-                    <GiftChoicePanel taxRegime={taxRegime} />
+                    {isPrepaymentMode ? (
+                      <div className="space-y-3 rounded-md border p-4">
+                        <div className="grid gap-2">
+                          <Label htmlFor="prepayment-amount">Monto recibido (con IGV)</Label>
 
-                    <FormField
-                      control={form.control}
-                      name="documents.0.items"
-                      render={() => (
-                        <FormItem>
-                          <FormLabel>Ítems del pedido</FormLabel>
+                          <Input
+                            id="prepayment-amount"
+                            inputMode="decimal"
+                            placeholder="Ej. 100.00"
+                            value={prepaymentAmountInput}
+                            onChange={(event) => setPrepaymentAmountInput(event.target.value)}
+                            aria-invalid={prepaymentAmountError !== null}
+                          />
 
-                          <FormControl>
-                            <ItemsEditTable taxRegime={taxRegime} />
-                          </FormControl>
+                          {prepaymentAmountError && (
+                            <p className="text-sm font-medium text-destructive">
+                              {prepaymentAmountError}
+                            </p>
+                          )}
+                        </div>
 
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                        <div className="rounded-md bg-muted/30 px-4 py-3 text-sm">
+                          <div className="flex justify-between text-muted-foreground">
+                            <span>Concepto</span>
+                            <span>Anticipo del pedido {sale.orderNumber}</span>
+                          </div>
 
-                    <ZeroValueLinesAlert taxRegime={taxRegime} />
+                          {!nuevoRus && prepaymentTaxType === "10" && (
+                            <div className="mt-1 flex justify-between text-muted-foreground">
+                              <span>IGV (18%) incluido</span>
+                              <span>
+                                {currency}{" "}
+                                {(prepaymentAmount - round2(prepaymentAmount / 1.18)).toFixed(2)}
+                              </span>
+                            </div>
+                          )}
 
-                    <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm">
-                      <div className="flex justify-between text-muted-foreground">
-                        <span>Subtotal</span>
-
-                        <span>
-                          {totals?.currency ?? "PEN"} {Number(totals?.subtotal ?? 0).toFixed(2)}
-                        </span>
+                          <div className="mt-2 flex justify-between border-t pt-2 text-base font-bold">
+                            <span>Total del anticipo</span>
+                            <span className="text-primary">
+                              {currency} {prepaymentAmount.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
                       </div>
+                    ) : (
+                      <>
+                        <GiftChoicePanel taxRegime={taxRegime} />
 
-                      {Number(totals?.discountTotal ?? 0) > 0 && (
-                        <div className="mt-1 flex justify-between text-muted-foreground">
-                          <span>Descuento</span>
+                        <FormField
+                          control={form.control}
+                          name="documents.0.items"
+                          render={() => (
+                            <FormItem>
+                              <FormLabel>Ítems del pedido</FormLabel>
 
-                          <span>
-                            - {totals?.currency ?? "PEN"} {Number(totals.discountTotal).toFixed(2)}
-                          </span>
+                              <FormControl>
+                                <ItemsEditTable taxRegime={taxRegime} />
+                              </FormControl>
+
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <ZeroValueLinesAlert taxRegime={taxRegime} />
+
+                        <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm">
+                          <div className="flex justify-between text-muted-foreground">
+                            <span>Subtotal</span>
+
+                            <span>
+                              {totals?.currency ?? "PEN"} {Number(totals?.subtotal ?? 0).toFixed(2)}
+                            </span>
+                          </div>
+
+                          {Number(totals?.discountTotal ?? 0) > 0 && (
+                            <div className="mt-1 flex justify-between text-muted-foreground">
+                              <span>Descuento</span>
+
+                              <span>
+                                - {totals?.currency ?? "PEN"}{" "}
+                                {Number(totals.discountTotal).toFixed(2)}
+                              </span>
+                            </div>
+                          )}
+
+                          {Number(totals?.shippingTotal ?? 0) > 0 && (
+                            <div className="mt-1 flex justify-between text-muted-foreground">
+                              <span>Envío</span>
+
+                              <span>
+                                {totals?.currency ?? "PEN"}{" "}
+                                {Number(totals.shippingTotal).toFixed(2)}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* A Nuevo RUS boleta must not show any tax. */}
+                          {!nuevoRus && (
+                            <div className="mt-1 flex justify-between text-muted-foreground">
+                              <span>IGV (18%)</span>
+
+                              <span>
+                                {totals?.currency ?? "PEN"}{" "}
+                                {Number(totals?.taxTotal ?? 0).toFixed(2)}
+                              </span>
+                            </div>
+                          )}
+
+                          <div className="mt-2 flex justify-between border-t pt-2 text-base font-bold">
+                            <span>Total</span>
+
+                            <span className="text-primary">
+                              {totals?.currency ?? "PEN"} {grandTotal.toFixed(2)}
+                            </span>
+                          </div>
+
+                          {deductsPrepayments && (
+                            <>
+                              {orderPrepayments.ready.map((prepayment) => (
+                                <div
+                                  key={prepayment.id}
+                                  className="mt-1 flex justify-between text-muted-foreground"
+                                >
+                                  <span>Anticipo {documentNumberOf(prepayment)}</span>
+                                  <span>
+                                    - {currency} {grandTotalOf(prepayment).toFixed(2)}
+                                  </span>
+                                </div>
+                              ))}
+
+                              <div className="mt-2 flex justify-between border-t pt-2 text-base font-bold">
+                                <span>A pagar</span>
+                                <span className="text-primary">
+                                  {currency} {pendingAmount.toFixed(2)}
+                                </span>
+                              </div>
+                            </>
+                          )}
                         </div>
-                      )}
 
-                      {Number(totals?.shippingTotal ?? 0) > 0 && (
-                        <div className="mt-1 flex justify-between text-muted-foreground">
-                          <span>Envío</span>
+                        {deductsPrepayments && (
+                          <p className="text-xs text-muted-foreground">
+                            Este comprobante lista todo el pedido y descuenta{" "}
+                            {orderPrepayments.ready.length === 1
+                              ? "el anticipo ya emitido"
+                              : `los ${orderPrepayments.ready.length} anticipos ya emitidos`}
+                            . Usa el mismo tipo de comprobante y RUC que el anticipo.
+                          </p>
+                        )}
+                      </>
+                    )}
 
-                          <span>
-                            {totals?.currency ?? "PEN"} {Number(totals.shippingTotal).toFixed(2)}
+                    {isWaitingForPrepayments && (
+                      <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900 dark:bg-amber-950/40">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                        <div>
+                          <span className="font-semibold">
+                            SUNAT aún no responde el anticipo{" "}
+                            {orderPrepayments.waiting.map(documentNumberOf).join(", ")}.{" "}
                           </span>
+                          Espera su respuesta para emitir el comprobante de la venta.
                         </div>
-                      )}
-
-                      {/* A Nuevo RUS boleta must not show any tax. */}
-                      {!nuevoRus && (
-                        <div className="mt-1 flex justify-between text-muted-foreground">
-                          <span>IGV (18%)</span>
-
-                          <span>
-                            {totals?.currency ?? "PEN"} {Number(totals?.taxTotal ?? 0).toFixed(2)}
-                          </span>
-                        </div>
-                      )}
-
-                      <div className="mt-2 flex justify-between border-t pt-2 text-base font-bold">
-                        <span>Total</span>
-
-                        <span className="text-primary">
-                          {totals?.currency ?? "PEN"} {grandTotal.toFixed(2)}
-                        </span>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
 
                 <DialogFooter className="shrink-0 border-t px-6 py-4">
-                  {linesWithoutValue.length > 0 && (
+                  {!isPrepaymentMode && linesWithoutValue.length > 0 && (
                     // The full explanation sits under the items, which may be
                     // scrolled out of view: keep the reason next to the button.
                     <span className="text-sm font-medium text-red-600 sm:mr-auto">
@@ -759,7 +952,10 @@ export default function EmitirComprobanteModal({
                       isPending ||
                       isMissingDefaultSequence ||
                       isIssuerBlocked ||
-                      linesWithoutValue.length > 0 ||
+                      orderPrepayments.isLoading ||
+                      isPrepaymentInvalid ||
+                      isWaitingForPrepayments ||
+                      (!isPrepaymentMode && linesWithoutValue.length > 0) ||
                       (nuevoRus && isInvoice)
                     }
                   >
@@ -771,7 +967,7 @@ export default function EmitirComprobanteModal({
                     ) : (
                       <>
                         <CheckCircle2 className="mr-2 h-4 w-4" />
-                        Emitir a SUNAT
+                        {isPrepaymentMode ? "Emitir anticipo" : "Emitir a SUNAT"}
                       </>
                     )}
                   </Button>

@@ -46,7 +46,7 @@ function res({ ventas = 0, costo = 0, fijos = 0 }: { ventas?: number; costo?: nu
     },
     gastos: {
       filas: [],
-      porCategoria: { PLANILLA: fijos, HERRAMIENTAS: 0, PUBLICIDAD: 0, COURIER_PROPIO: 0, OTRO: 0, INVERSION: 0 },
+      porCategoria: { PLANILLA: fijos, HERRAMIENTAS: 0, IMPLEMENTOS: 0, PUBLICIDAD: 0, COURIER_PROPIO: 0, OTRO: 0, INVERSION: 0 },
       fijos,
       publicidad: 0,
       inversion: 0,

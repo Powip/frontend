@@ -3,7 +3,7 @@
 /**
  * Resultados › Punto de equilibrio (FEAT-34).
  *
- * - Fijos y variables separados: fijos = gastos fijos del periodo (planilla, herramientas, courier propio, otros,
+ * - Fijos y variables separados: fijos = gastos fijos del periodo (planilla, herramientas, implementos, courier propio, otros,
  *   repartidos por días); variables = costo de producto, merma, comisiones, envíos y publicidad. Antes los fees,
  *   el courier integrado y la publicidad se tomaban como fijos y el punto de equilibrio salía inflado (M2).
  * - Unidades reales (Σ cantidades de producto), no pedidos (C6).
@@ -318,7 +318,7 @@ export default function EquilibrioPage() {
       <AvisoCostos costo={r.costo} />
       {sinFijos && (
         <Aviso tono="warn" titulo="Sin gastos fijos cargados en este periodo">
-          Carga planilla, herramientas, courier propio y otros gastos en Costos › Gastos y costos.
+          Carga planilla, herramientas, implementos, courier propio y otros gastos en Costos › Gastos y costos.
           Sin ellos no hay punto de equilibrio que calcular.
         </Aviso>
       )}

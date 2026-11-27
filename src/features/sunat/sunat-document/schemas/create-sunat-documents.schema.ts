@@ -93,6 +93,10 @@ const sunatDocumentSchema = z
     customer: sunatDocumentCustomerSchema,
     totals: sunatDocumentTotalsSchema,
     items: z.array(sunatDocumentLineItemSchema).min(1, "At least one invoice item is required"),
+    /** Anticipo (advance payment) of the order. */
+    isPrepayment: z.boolean().optional(),
+    /** Final document: anticipos of the order it deducts. */
+    prepaymentDocumentIds: z.array(z.string().min(1)).optional(),
   })
   .superRefine((document, ctx) => {
     const isInvoice = document.taxDocumentType === SUNAT_DOCUMENT_TYPES.INVOICE;

@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import EmitirComprobanteModal from "@/app/facturacion/components/modals/EmitirComprobanteModal";
 import type { Order } from "@/features/sales/models/order";
 import { useCreateSunatDocuments } from "@/features/sunat/sunat-document/hooks/use-create-sunat-documents";
+import { useOrderPrepayments } from "@/features/sunat/sunat-document/hooks/use-order-prepayments";
 import { useSunatDocumentSequences } from "@/features/sunat/sunat-document-sequence/hooks/use-sunat-document-sequences";
 import type { SunatDocumentSequence } from "@/features/sunat/sunat-document-sequence/models/sunat-document-sequence";
 import { useSunatProfiles } from "@/features/sunat/sunat-profile/hooks/use-sunat-profiles";
@@ -12,6 +13,7 @@ import type { SunatProfile } from "@/features/sunat/sunat-profile/models/sunat-p
 jest.mock("@/features/sunat/sunat-profile/hooks/use-sunat-profiles");
 jest.mock("@/features/sunat/sunat-document-sequence/hooks/use-sunat-document-sequences");
 jest.mock("@/features/sunat/sunat-document/hooks/use-create-sunat-documents");
+jest.mock("@/features/sunat/sunat-document/hooks/use-order-prepayments");
 
 function profile(overrides: Partial<SunatProfile>): SunatProfile {
   return {
@@ -93,6 +95,7 @@ beforeEach(() => {
     isLoading: false,
   }));
   (useCreateSunatDocuments as jest.Mock).mockReturnValue({ mutateAsync, isPending: false });
+  (useOrderPrepayments as jest.Mock).mockReturnValue({ ready: [], waiting: [], isLoading: false });
 });
 
 function renderModal(issuerProfileId?: string, saleToEmit: Order = sale) {

@@ -9,4 +9,9 @@ export interface TaxDocumentRow {
    * `undefined` means the sale has not been emitted to SUNAT yet.
    */
   taxDocument?: SunatDocument;
+  /**
+   * Anticipos (advance payments) issued for this sale, newest first. They
+   * never fill `taxDocument`: the final comprobante deducts them.
+   */
+  prepayments?: SunatDocument[];
 }

@@ -53,7 +53,7 @@ function res(v: {
     },
     gastos: {
       filas: [],
-      porCategoria: { PLANILLA: fijos, HERRAMIENTAS: 0, PUBLICIDAD: publicidad, COURIER_PROPIO: 0, OTRO: 0, INVERSION: 0 },
+      porCategoria: { PLANILLA: fijos, HERRAMIENTAS: 0, IMPLEMENTOS: 0, PUBLICIDAD: publicidad, COURIER_PROPIO: 0, OTRO: 0, INVERSION: 0 },
       fijos,
       publicidad,
       inversion: 0,
