@@ -1,5 +1,5 @@
 jest.setTimeout(30_000);
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AxiosError, AxiosHeaders } from "axios";
 import { CourierSettlementWorkspace } from "../CourierSettlementWorkspace";
@@ -29,6 +29,8 @@ jest.mock("@/services/courierSettlementsService", () => ({
   ...jest.requireActual("@/services/courierSettlementsService"),
   getCourierSettlements: jest.fn(),
   confirmCourierCollection: jest.fn(),
+  createCourierSettlement: jest.fn(),
+  getCourierSettlement: jest.fn(),
 }));
 const service = jest.mocked(api);
 const capabilities = { canConfirm: true, canRegister: true, canReconcile: true };
@@ -165,4 +167,28 @@ it("shows load errors instead of using local session records as financial truth"
   expect(
     screen.queryByRole("button", { name: "Confirmar cobro de otro pedido" }),
   ).not.toBeInTheDocument();
+});
+
+it("keeps the liquidation going when a refresh fails mid-way, and warns that the data is stale", async () => {
+  Object.defineProperty(global.crypto, "randomUUID", { configurable: true, value: jest.fn(() => "request-uuid") });
+  service.getCourierSettlements
+    .mockResolvedValueOnce({ capabilities, collections: [], history: [] })
+    .mockRejectedValue(new Error("502 Bad Gateway"));
+  service.confirmCourierCollection.mockImplementation(
+    async (_company, input) =>
+      ({ id: `c-${input.orderId}`, orderId: input.orderId, amount: input.amount, currency: "PEN", courierId: "courier" }) as api.CourierCollection,
+  );
+  service.createCourierSettlement.mockResolvedValue({ id: "s1", status: "PENDIENTE_REVISION" } as api.SettlementDetail);
+  service.getCourierSettlement.mockReturnValue(new Promise(() => {}));
+  view();
+  fireEvent.click(await screen.findByRole("checkbox", { name: "Seleccionar ORD-o1" }));
+  fireEvent.click(screen.getByRole("button", { name: "Registrar liquidación" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Guardar liquidación" }));
+  await waitFor(() => expect(service.createCourierSettlement).toHaveBeenCalledTimes(1));
+  expect(service.createCourierSettlement.mock.calls[0][1]).toMatchObject({
+    allocations: [{ collectionId: "c-o1", amount: 100 }],
+    amountDeposited: 100,
+  });
+  expect(await screen.findByText(/se muestran los datos anteriores/)).toBeInTheDocument();
+  expect(screen.queryByText("No se pudieron cargar las liquidaciones guardadas.")).not.toBeInTheDocument();
 });

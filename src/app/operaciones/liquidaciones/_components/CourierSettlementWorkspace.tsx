@@ -14,7 +14,7 @@ import {
 } from "@/services/courierSettlementsService";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ConfirmCollectionDialog, CreateSettlementDialog } from "./SettlementCreateDialogs";
+import { ConfirmCollectionDialog, CreateSettlementDialog, today } from "./SettlementCreateDialogs";
 import { SettlementDetailDialog } from "./SettlementDetailDialog";
 import { RegisterLiquidationDialog } from "./RegisterLiquidationDialog";
 import { PorLiquidarPanel, canLiquidate } from "./PorLiquidarPanel";
@@ -144,7 +144,9 @@ export function CourierSettlementWorkspace({
           Actualizar
         </Button>
       </header>
-      {query.isError && !forbidden ? (
+      {/* Solo sin datos: si falla un refresco con datos (p. ej. a mitad de una liquidación), los
+          diálogos abiertos tienen que seguir montados para terminar su trabajo. */}
+      {query.isError && !data && !forbidden ? (
         <div role="alert" className="rounded border p-5">
           No se pudieron cargar las liquidaciones guardadas.{" "}
           <Button type="button" variant="link" onClick={() => void refresh()}>
@@ -153,6 +155,14 @@ export function CourierSettlementWorkspace({
         </div>
       ) : (
         <>
+          {query.isError && data && !forbidden && (
+            <p role="alert" className="text-sm text-amber-700">
+              No se pudieron actualizar las liquidaciones; se muestran los datos anteriores.{" "}
+              <Button type="button" variant="link" onClick={() => void refresh()}>
+                Reintentar
+              </Button>
+            </p>
+          )}
           {forbidden && (
             <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
               Tu usuario no tiene el permiso de Finanzas (Ver finanzas) que exige registrar cobros y
@@ -204,7 +214,7 @@ export function CourierSettlementWorkspace({
                     initial: {
                       orderId: row.orderId,
                       amount: fromCents(row.pendingCents),
-                      collectedAt: collectionDate(row.updatedAt, new Date().toISOString().slice(0, 10)),
+                      collectedAt: collectionDate(row.updatedAt, today()),
                     },
                   })
                 }

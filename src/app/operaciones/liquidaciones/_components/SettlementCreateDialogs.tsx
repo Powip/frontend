@@ -162,8 +162,9 @@ export function ConfirmCollectionDialog({
     setShowEvidence(false);
     setProviderEvidenceId("");
     setCourierId(courierFor(id));
+    // Sin pendiente conocido se limpia: nunca arrastrar el importe del pedido anterior.
     const pending = pendingByOrder?.get(id);
-    if (pending !== undefined) setAmount(String(pending));
+    setAmount(pending !== undefined ? String(pending) : "");
   }
   async function submit() {
     if (submitting.current || (!saved && !valid)) return;

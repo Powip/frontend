@@ -237,3 +237,24 @@ it("explains why an order with an inactive courier cannot be confirmed", () => {
   expect(screen.getByRole("alert")).toHaveTextContent("inactivo o eliminado");
   expect(screen.getByRole("button", { name: "Confirmar cobro" })).toBeDisabled();
 });
+
+it("clears the prefilled amount when switching to an order without a known pending amount", () => {
+  const other = { ...order, id: "order2", orderNumber: "ORD-2" } as unknown as OrderHeader;
+  render(
+    <ConfirmCollectionDialog
+      companyId="company"
+      orders={[order, other]}
+      couriers={[courier]}
+      pendingByOrder={new Map([["order1", 320]])}
+      initial={{ orderId: "order1", amount: 320 }}
+      onClose={jest.fn()}
+      onPersisted={async () => {}}
+      onComplete={jest.fn()}
+    />,
+  );
+  expect(screen.getByLabelText("Importe cobrado PEN")).toHaveValue("320");
+  fireEvent.change(screen.getByLabelText("Pedido"), { target: { value: "order2" } });
+  expect(screen.getByLabelText("Importe cobrado PEN")).toHaveValue("");
+  fireEvent.change(screen.getByLabelText("Pedido"), { target: { value: "order1" } });
+  expect(screen.getByLabelText("Importe cobrado PEN")).toHaveValue("320");
+});

@@ -64,9 +64,9 @@ export function RegisterLiquidationDialog({
   const [amounts, setAmounts] = useState<Record<string, string>>(() =>
     Object.fromEntries(initialRows.map((row) => [row.orderId, String(fromCents(row.pendingCents))])),
   );
-  const [deposit, setDeposit] = useState(() =>
-    String(fromCents(initialRows.reduce((sum, row) => sum + row.pendingCents, 0))),
-  );
+  // null = automático (lo cobrado en las filas actuales) hasta que el usuario lo edite; así
+  // «Quitar» o corregir un importe no deja un depósito inflado con exceso sin asignar.
+  const [depositInput, setDepositInput] = useState<string | null>(null);
   const [method, setMethod] = useState<SettlementMethod>("transferencia");
   const [date, setDate] = useState(today);
   const [operation, setOperation] = useState("");
@@ -91,6 +91,7 @@ export function RegisterLiquidationDialog({
     saved[row.orderId] ? Math.round(saved[row.orderId].amount * 100) : centsOf(amounts[row.orderId] ?? ""),
   );
   const totalCollected = collectedCents.reduce<number>((sum, cents) => sum + (cents ?? 0), 0);
+  const deposit = depositInput ?? String(fromCents(totalCollected));
   const depositCents = centsOf(deposit);
   const allocations = allocateDeposit(
     collectedCents.map((cents) => cents ?? 0),
@@ -325,7 +326,7 @@ export function RegisterLiquidationDialog({
               inputMode="decimal"
               value={deposit}
               disabled={depositFrozen}
-              onChange={(event) => setDeposit(event.target.value)}
+              onChange={(event) => setDepositInput(event.target.value)}
             />
           </div>
           <div>
@@ -385,7 +386,8 @@ export function RegisterLiquidationDialog({
           </p>
           {differenceCents !== null && differenceCents < 0 && (
             <p className="mt-1 text-amber-700">
-              Depósito parcial: se liquida en orden hasta agotar lo depositado; el resto queda por liquidar.
+              Depósito parcial: se liquida en orden hasta agotar lo depositado. Los cobros igual quedan
+              confirmados; lo no cubierto queda en «Cobros confirmados» esperando otro depósito.
             </p>
           )}
           {differenceCents !== null && differenceCents > 0 && (

@@ -149,3 +149,23 @@ it("names the order the server rejected and lets the user drop it", async () => 
   expect(service.confirmCourierCollection).toHaveBeenCalledTimes(2);
   expect(service.createCourierSettlement.mock.calls[0][1].allocations).toEqual([{ collectionId: "col-a", amount: 50 }]);
 });
+
+it("recalculates the default deposit when an order is removed or an amount is corrected, until the user edits it", () => {
+  view([row("a", 5000), row("b", 3000), row("c", 2000)]);
+  const deposit = () => screen.getByLabelText("Importe depositado PEN");
+  expect(deposit()).toHaveValue("100");
+  fireEvent.click(screen.getByRole("button", { name: "Quitar ORD-c" }));
+  expect(deposit()).toHaveValue("80");
+  fireEvent.change(screen.getByLabelText("Cobrado en ORD-b"), { target: { value: "25" } });
+  expect(deposit()).toHaveValue("75");
+  expect(screen.queryByText(/El depósito supera lo cobrado/)).not.toBeInTheDocument();
+  fireEvent.change(deposit(), { target: { value: "70" } });
+  fireEvent.click(screen.getByRole("button", { name: "Quitar ORD-b" }));
+  expect(deposit()).toHaveValue("70");
+});
+
+it("explains that a short deposit leaves the rest confirmed in «Cobros confirmados», not back in «Por liquidar»", () => {
+  view([row("a", 5000), row("b", 3000)]);
+  fireEvent.change(screen.getByLabelText("Importe depositado PEN"), { target: { value: "50" } });
+  expect(screen.getByText(/Depósito parcial/)).toHaveTextContent("queda en «Cobros confirmados» esperando otro depósito");
+});

@@ -5,6 +5,7 @@ import {
   allocateDeposit,
   buildPendingCollections,
   collectionDate,
+  localDay,
   resolveOrderCourier,
   toCents,
 } from "../pendingCollections";
@@ -59,7 +60,7 @@ describe("buildPendingCollections", () => {
     expect(row).toMatchObject({ courierHeldPaymentsCents: 6000, paidToBusinessCents: 4000, pendingCents: 6000 });
   });
 
-  it("subtracts payments made directly to the business (paid or awaiting verification) and ignores LOST", () => {
+  it("subtracts only PAID payments to the business: an unverified PENDING advance or a LOST one does not count", () => {
     const [row] = buildPendingCollections(
       [
         order({
@@ -70,7 +71,25 @@ describe("buildPendingCollections", () => {
       couriers,
       NOW,
     );
-    expect(row).toMatchObject({ paidToBusinessCents: 5000, expectedCents: 5000, pendingCents: 5000 });
+    expect(row).toMatchObject({ paidToBusinessCents: 3000, expectedCents: 7000, pendingCents: 7000 });
+  });
+
+  it("keeps an order whose full total is a PENDING advance: the courier may still owe it", () => {
+    const [row] = buildPendingCollections([order({ payments: [payment("YAPE", "100.00", "PENDING")] })], [], couriers, NOW);
+    expect(row).toMatchObject({ paidToBusinessCents: 0, pendingCents: 10000, issue: null });
+  });
+
+  it("skips zero-total orders and does not block a row on a broken courier-held amount", () => {
+    const rows = buildPendingCollections(
+      [
+        order({ id: "gift", orderNumber: "GIFT", grandTotal: "0.00" }),
+        order({ id: "cod", orderNumber: "COD", payments: [payment("CONTRA_ENTREGA", "abc")] }),
+      ],
+      [],
+      couriers,
+      NOW,
+    );
+    expect(rows.map((row) => [row.orderNumber, row.issue, row.pendingCents])).toEqual([["COD", null, 10000]]);
   });
 
   it("drops fully prepaid orders and subtracts collections already confirmed", () => {
@@ -165,7 +184,24 @@ describe("money helpers", () => {
   });
   it("uses the order update day as collection date, never a future one", () => {
     expect(collectionDate("2026-11-20T15:00:00.000Z", "2026-11-27")).toBe("2026-11-20");
-    expect(collectionDate("2026-11-28T01:00:00.000Z", "2026-11-27")).toBe("2026-11-27");
+    expect(collectionDate("2026-11-29T15:00:00.000Z", "2026-11-27")).toBe("2026-11-27");
     expect(collectionDate(null, "2026-11-27")).toBe("2026-11-27");
+    expect(collectionDate("basura", "2026-11-27")).toBe("2026-11-27");
+  });
+  it("reads timestamps as the local day, not the UTC day (Lima after 19:00 is already tomorrow in UTC)", () => {
+    const previous = process.env.TZ;
+    process.env.TZ = "America/Lima";
+    try {
+      // 20:30 del 27-11 en Lima = 01:30Z del 28-11.
+      expect(localDay("2026-11-28T01:30:00.000Z")).toBe("2026-11-27");
+      expect(collectionDate("2026-11-28T01:30:00.000Z", "2026-11-27")).toBe("2026-11-27");
+      expect(collectionDate("2026-11-27T01:30:00.000Z", "2026-11-27")).toBe("2026-11-26");
+      expect(localDay("2026-11-20")).toBe("2026-11-20");
+      expect(localDay(null)).toBe("");
+      expect(localDay("basura")).toBe("");
+    } finally {
+      if (previous === undefined) delete process.env.TZ;
+      else process.env.TZ = previous;
+    }
   });
 });

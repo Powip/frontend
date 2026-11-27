@@ -9,6 +9,7 @@ import { OrderDetailButton, OrderDetailModalProvider } from "@/components/orders
 import { settlementMoney } from "@/services/courierSettlementsService";
 import {
   fromCents,
+  localDay,
   pendingIssueHelp,
   pendingIssueLabels,
   type PendingCollection,
@@ -84,6 +85,10 @@ export function PorLiquidarPanel({
   const selected = rows.filter((row) => selectedIds.has(row.orderId) && canLiquidate(row));
   const first = selected[0];
   const selectedCents = selected.reduce((sum, row) => sum + row.pendingCents, 0);
+  // La selección sobrevive a los filtros (buscar e ir tildando los pedidos que informa el
+  // courier); se avisa cuántos seleccionados no están a la vista.
+  const filteredIds = new Set(filtered.map((row) => row.orderId));
+  const hiddenSelected = selected.filter((row) => !filteredIds.has(row.orderId)).length;
 
   function selectable(row: PendingCollection) {
     if (readOnly || !canLiquidate(row)) return false;
@@ -102,8 +107,10 @@ export function PorLiquidarPanel({
   function selectVisible() {
     const base = first ?? visible.find((row) => !readOnly && canLiquidate(row));
     if (!base) return;
+    const liquidable = new Set(rows.filter(canLiquidate).map((row) => row.orderId));
     setSelectedIds((previous) => {
-      const next = new Set(previous);
+      // Sin ids viejos (pedidos ya liquidados): contarían contra el máximo.
+      const next = new Set([...previous].filter((id) => liquidable.has(id)));
       for (const row of visible) {
         if (next.size >= MAX_LIQUIDATION_ORDERS) break;
         if (canLiquidate(row) && compatible(base, row)) next.add(row.orderId);
@@ -123,7 +130,7 @@ export function PorLiquidarPanel({
           Cliente: row.customerName,
           Tienda: row.storeName ?? "",
           Courier: row.courierLabel,
-          "Última actualización": row.updatedAt?.slice(0, 10) ?? "",
+          "Última actualización": localDay(row.updatedAt),
           Días: row.days,
           Moneda: row.currency ?? "",
           Total: fromCents(row.totalCents),
@@ -245,6 +252,7 @@ export function PorLiquidarPanel({
                 <span>
                   {selected.length} {selected.length === 1 ? "pedido" : "pedidos"} de {first.courierLabel} ·{" "}
                   {money(selectedCents, first.currency)}
+                  {hiddenSelected > 0 && ` (${hiddenSelected} fuera de los filtros actuales)`}
                 </span>
                 <Button type="button" onClick={() => onRegister(selected)}>
                   Registrar liquidación
@@ -317,7 +325,7 @@ export function PorLiquidarPanel({
                     )}
                   </td>
                   <td className="p-3">
-                    <p>{row.updatedAt?.slice(0, 10) ?? "—"}</p>
+                    <p>{localDay(row.updatedAt) || "—"}</p>
                     <p className={`text-xs ${row.days > 15 ? "font-medium text-red-600" : "text-muted-foreground"}`}>
                       hace {row.days} {row.days === 1 ? "día" : "días"}
                     </p>

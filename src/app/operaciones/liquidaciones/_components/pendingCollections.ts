@@ -10,12 +10,14 @@ import type { CourierCollection } from "@/services/courierSettlementsService";
  * reclamar y precargar importes; el cobro solo queda registrado cuando
  * Finanzas lo confirma (POST /courier-settlements/.../collections).
  *
- * Esperado del courier = total del pedido − pagos recibidos directo por el
- * negocio. Un pago contraentrega o en efectivo es dinero que cobró el courier
- * en la puerta (aunque esté PAID), así que no se descuenta: en prod (27-11) los
- * EFECTIVO de pedidos entregados son casi todos de Fenix/Shalom y se cargan
- * después de la entrega. POS, Yape, Plin, transferencia, etc. van directo al
- * negocio. Los pagos LOST no cuentan.
+ * Esperado del courier = total del pedido − pagos PAID recibidos directo por
+ * el negocio. Un pago contraentrega o en efectivo es dinero que cobró el
+ * courier en la puerta (aunque esté PAID), así que no se descuenta: en prod
+ * (27-11) los EFECTIVO de pedidos entregados son casi todos de Fenix/Shalom y
+ * se cargan después de la entrega. POS, Yape, Plin, transferencia, etc. van
+ * directo al negocio. Solo cuentan los PAID: un adelanto PENDING (Yape sin
+ * verificar) no se resta, igual que el «Por cobrar» de la guía
+ * (`guideOrderBalance`), así el courier no queda debiendo de menos.
  */
 export const COURIER_HELD_METHODS: ReadonlySet<string> = new Set(["CONTRA_ENTREGA", "CONTRAENTREGA", "EFECTIVO"]);
 
@@ -132,11 +134,14 @@ export function buildPendingCollections(
     for (const payment of order.payments ?? []) {
       if (payment.status === "LOST") continue;
       const cents = toCents(payment.amount);
-      if (COURIER_HELD_METHODS.has(String(payment.paymentMethod ?? "").toUpperCase())) courierHeldPaymentsCents += cents;
-      else paidToBusinessCents += cents;
+      if (COURIER_HELD_METHODS.has(String(payment.paymentMethod ?? "").toUpperCase())) {
+        // Informativo: no entra en el cálculo, así que un importe roto no bloquea la fila.
+        if (Number.isFinite(cents)) courierHeldPaymentsCents += cents;
+      } else if (payment.status === "PAID") paidToBusinessCents += cents;
     }
-    const invalid =
-      !(totalCents > 0) || !Number.isFinite(paidToBusinessCents) || !Number.isFinite(courierHeldPaymentsCents);
+    // Un pedido de total 0 (regalo, 100 % de descuento) no tiene nada que rendir.
+    if (totalCents === 0) continue;
+    const invalid = !(totalCents > 0) || !Number.isFinite(paidToBusinessCents);
     const expectedCents = invalid ? Number.NaN : Math.max(0, totalCents - paidToBusinessCents);
     const confirmedCents = confirmed.get(order.id) ?? 0;
     const pendingCents = invalid ? Number.NaN : Math.max(0, expectedCents - confirmedCents);
@@ -170,8 +175,9 @@ export function buildPendingCollections(
 }
 
 /**
- * Reparte un depósito entre cobros en orden, hasta agotarlo. Un depósito menor
- * deja el resto por liquidar; uno mayor queda como exceso sin asignar.
+ * Reparte un depósito entre cobros en orden, hasta agotarlo. Con un depósito
+ * menor, el resto de los cobros queda confirmado y esperando otro depósito
+ * (en «Cobros confirmados»); uno mayor queda como exceso sin asignar.
  */
 export function allocateDeposit(amountsCents: readonly number[], depositCents: number): number[] {
   let left = Math.max(0, depositCents);
@@ -182,8 +188,25 @@ export function allocateDeposit(amountsCents: readonly number[], depositCents: n
   });
 }
 
-/** Fecha YYYY-MM-DD válida para ms-courier (no futura respecto de hoy). */
-export function collectionDate(updatedAt: string | null, fallback: string): string {
-  const day = updatedAt?.slice(0, 10) ?? "";
-  return /^\d{4}-\d{2}-\d{2}$/.test(day) && day <= fallback ? day : fallback;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Día local (YYYY-MM-DD) de un timestamp de la API. Cortar el ISO daría el día
+ * UTC: en Lima, desde las 19:00 ya es «mañana». "" si no es una fecha válida.
+ */
+export function localDay(value: string | null | undefined): string {
+  if (!value) return "";
+  if (DAY.test(value)) return value;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * Fecha YYYY-MM-DD válida para ms-courier: el día local de la última
+ * actualización, nunca posterior a `today` (el día local de hoy).
+ */
+export function collectionDate(updatedAt: string | null, today: string): string {
+  const day = localDay(updatedAt);
+  return day && day <= today ? day : today;
 }
