@@ -82,13 +82,14 @@ beforeEach(() => {
   jest.mocked(createShrinkage).mockResolvedValue(merma("nueva", {}));
 });
 
-it("muestra el aviso de la Fase 2 y los totales del periodo", () => {
+it("dice que las mermas de Almacén ya llegan solas (desde el 26-11) y muestra los totales del periodo", () => {
   renderPagina();
   expect(
     screen.getByText(
-      "Las mermas que se registran en Almacén (ajustes de inventario) todavía no llegan acá; se conectan en la Fase 2.",
+      "Las mermas que se aprueban en Almacén (ajustes de inventario) llegan solas a esta lista desde el 26 de noviembre de 2026; las anteriores no están.",
     ),
   ).toBeInTheDocument();
+  expect(screen.queryByText(/Fase 2/)).not.toBeInTheDocument();
   expect(within(screen.getByRole("region", { name: "Unidades perdidas" })).getByText("3")).toBeInTheDocument();
   // 2 × 10 − 5 + 1 × 30 = 45
   expect(within(screen.getByRole("region", { name: "Costo estimado" })).getByText(formatSolesDecimales(45))).toBeInTheDocument();

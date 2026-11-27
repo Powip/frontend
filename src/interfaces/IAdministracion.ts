@@ -76,6 +76,8 @@ export interface ProductoVendido {
  */
 export interface EnCursoPeriodo {
   pedidos: number;
+  /** Σ `grandTotal` de esos pedidos: lo vendido en el periodo que todavía no se entregó (FEAT-34 Fase 3). */
+  monto: number;
   adelantos: MontoYPedidos;
 }
 
@@ -116,4 +118,98 @@ export interface EnTransitoAdministracion {
   porEstado: Record<EstadoEnTransito, SaldoEnTransito>;
   porCourier: CourierEnTransito[];
   antiguos: { dias: number; pedidos: number; saldo: number };
+}
+
+// ── FEAT-34 Fase 3: datos que antes vivían en el navegador y compras de inventario ──
+// Copia de `ms-ventas/src/administracion/administracion-datos.types.ts`.
+
+export interface MetasAdministracion {
+  anio: number;
+  ventasAnual: number | null;
+  profitAnual: number | null;
+  /** En % (20 = 20 %). */
+  margenObjetivoPct: number | null;
+}
+
+export interface ObjetivosAdministracion {
+  /** Ventas por día por clave de canal (`claveCanal`), o `todos`. */
+  objetivos: Record<string, number>;
+}
+
+export const TIPOS_CAPITAL_SERVIDOR = ["capital_propio", "aumento_capital", "prestamo", "utilidad_reinvertida"] as const;
+export type TipoCapitalServidor = (typeof TIPOS_CAPITAL_SERVIDOR)[number];
+
+export interface CapitalNuevo {
+  tipo: TipoCapitalServidor;
+  descripcion?: string;
+  monto: number;
+  tienda?: string | null;
+  /** Tasa efectiva anual en %. Solo préstamo. */
+  teaPct?: number | null;
+  plazoCuotas?: number | null;
+  cuotaMensual?: number | null;
+  /** Día `YYYY-MM-DD` del desembolso. */
+  fechaInicio?: string | null;
+  cuotasPagadas?: number;
+}
+
+export interface CapitalServidor extends Required<CapitalNuevo> {
+  id: string;
+  descripcion: string;
+  creadoEn: string;
+}
+
+export type LadoCuenta = "cobrar" | "pagar";
+
+export interface CuentaNueva {
+  lado: LadoCuenta;
+  concepto: string;
+  descripcion?: string;
+  monto: number;
+  /** Día `YYYY-MM-DD` de vencimiento, o null. */
+  vence?: string | null;
+  /** Día en que se cobró o pagó; null = pendiente. */
+  saldadaEn?: string | null;
+}
+
+export interface CuentaServidor extends Required<CuentaNueva> {
+  id: string;
+  creadoEn: string;
+}
+
+export type EstadoCompra = "PEDIDA" | "RECIBIDA_PARCIAL" | "RECIBIDA";
+
+export interface CompraPorPagar {
+  id: string;
+  numero: string;
+  proveedor: string | null;
+  estado: EstadoCompra;
+  monto: number;
+  vence: string | null;
+}
+
+/** `GET /administracion/compras`: compras de inventario (ms-logistics), no las cargadas a mano en Gastos. */
+export interface ComprasAdministracion {
+  desde: string;
+  hasta: string;
+  zonaHoraria: typeof ZONA_ADMINISTRACION;
+  /** Pagadas en el periodo (día del pago; sin él, la fecha de compra). Monto = total + gastos de la compra. */
+  pagadas: { compras: number; monto: number; porMes: Array<{ mes: string; compras: number; monto: number }> };
+  /** Pendientes de pago, hoy (no dependen del periodo). */
+  porPagar: { compras: number; monto: number; lista: CompraPorPagar[] };
+}
+
+export type TipoImportacion = "metas" | "objetivos" | "capital" | "cuentas";
+
+export interface ImportacionLocal {
+  metas?: MetasAdministracion[];
+  objetivos?: Array<{ canal: string; ventasDia: number }>;
+  capital?: CapitalNuevo[];
+  cuentas?: CuentaNueva[];
+}
+
+export interface ResumenImportacion {
+  importado: Record<TipoImportacion, number>;
+  /** Lo que no se subió porque el servidor ya tenía datos de ese tipo (o de ese año de metas). */
+  omitido: TipoImportacion[];
 }

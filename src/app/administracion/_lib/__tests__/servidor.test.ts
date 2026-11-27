@@ -191,6 +191,6 @@ it("la respuesta vacía tiene la forma del contrato", () => {
     totales: agregadoVacio(),
     porDia: [],
     calidad: { entregasSinHistorial: 0 },
-    enCurso: { pedidos: 0, adelantos: { pedidos: 0, monto: 0 } },
+    enCurso: { pedidos: 0, monto: 0, adelantos: { pedidos: 0, monto: 0 } },
   });
 });

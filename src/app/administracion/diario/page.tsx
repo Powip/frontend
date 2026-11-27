@@ -10,7 +10,7 @@
  *   Antes solo había 7 canales fijos y el 44 % de lo vendido (Web, TikTok, Falabella, Live…) no aparecía (C3).
  * - Publicidad por día: consumo de las cuentas conectadas (`datos.publicidad.porDia`). La inversión manual del
  *   navegador ya no se usa (C8). El consumo no viene por canal: solo se muestra en «Todos los canales».
- * - Objetivo diario por canal: guardado en el navegador (`objetivoStorage`), con la clave de canal normalizada.
+ * - Objetivo diario por canal: guardado en el servidor (Fase 3, `objetivoStorage`), con la clave de canal normalizada.
  */
 
 import { Target } from "lucide-react";
@@ -119,7 +119,7 @@ export default function ControlDiarioPage() {
       : TODOS_LOS_CANALES;
   const esTodos = canal === TODOS_LOS_CANALES;
   const nombreVista = esTodos ? "Todos los canales" : nombreCanal(canal);
-  const { objetivo, guardar } = useObjetivoCanal(companyId, canal);
+  const { objetivo, guardar, cargado: objetivoCargado } = useObjetivoCanal(companyId, canal);
 
   const hastaVisible = minDia(toDate, hoy);
   const dias = useMemo(() => diasDelRango(fromDate, hastaVisible), [fromDate, hastaVisible]);
@@ -424,9 +424,10 @@ export default function ControlDiarioPage() {
 
         <PanelCard
           titulo={`Objetivo diario · ${nombreVista}`}
-          subtitulo="Se guarda solo en este navegador: otro usuario u otra computadora no lo ve."
+          subtitulo="Lo ve todo el equipo con acceso a Finanzas."
           acciones={
-            !editando && (
+            !editando &&
+            objetivoCargado && (
               <button type="button" className={claseBotonSecundario} onClick={abrirEditor}>
                 <Target className="h-3.5 w-3.5" aria-hidden /> {hayObjetivo(objetivo) ? "Cambiar objetivo" : "Poner objetivo"}
               </button>

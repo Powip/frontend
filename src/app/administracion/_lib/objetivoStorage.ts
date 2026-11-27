@@ -3,20 +3,20 @@
 /**
  * Objetivo diario de ventas por canal (Ventas › Control diario).
  *
- * Vive solo en el navegador (localStorage), por empresa y canal: otro usuario u otra computadora no lo ve. La pantalla
- * lo rotula así. El canal se guarda con su clave normalizada (`claveCanal`), así «LIVE TIKTOK» y «TIKTOK_LIVE»
- * comparten objetivo; «Todos los canales» tiene el suyo propio.
+ * FEAT-34 Fase 3: se guarda en el servidor (`panel_metas`, tipo `admin_objetivo_dia`) y lo ve todo el equipo. El canal
+ * va con su clave normalizada (`claveCanal`), así «LIVE TIKTOK» y «TIKTOK_LIVE» comparten objetivo; «Todos los canales»
+ * tiene el suyo propio (`todos`).
  *
- * La versión anterior guardaba `{ objetivoCpv, presupuestoMes, metaVentasMes }` con la misma clave. El CPV y el
- * presupuesto se medían contra la inversión manual (ya no entra a ningún cálculo, D2) y se ignoran. La meta mensual
- * se respeta repartida por los días de cada mes hasta que se guarde un objetivo diario.
- *
- * No usa `useLocalStorageState`: ese hook escribe en cada cambio (y, al cambiar de clave, por un instante escribe el
- * valor de la clave anterior en la nueva). Acá se cambia de canal seguido, así que solo se escribe al guardar.
+ * Lo que quedó en el navegador (clave `powip:admin:objetivo-canal:<empresa>:<canal>`, versión anterior) solo se lee
+ * para subirlo una vez (`leerObjetivo`, `ImportarNavegador`). La versión de antes de esa guardaba
+ * `{ objetivoCpv, presupuestoMes, metaVentasMes }`: el CPV y el presupuesto se ignoran (D2) y la meta mensual se respeta
+ * repartida por los días de cada mes.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
+import { toast } from "sonner";
 import { claveCanal } from "./canales";
+import { mensajeError, useObjetivosServidor } from "./datosServidor";
 import { type DiaKey, diasDelMes, partes } from "./periodo";
 
 /** Clave de «Todos los canales». En minúsculas: `claveCanal` siempre devuelve mayúsculas, así que no choca. */
@@ -85,31 +85,25 @@ export function leerObjetivo(companyId: string, canal: string): ObjetivoCanal {
   }
 }
 
-/** Objetivo del canal y cómo guardarlo (`null` lo borra). */
-export function useObjetivoCanal(companyId: string, canal: string) {
-  const key = storageKeyObjetivo(companyId, canal);
-  const [leido, setLeido] = useState<{ key: string; objetivo: ObjetivoCanal } | null>(null);
-
-  useEffect(() => {
-    setLeido({ key, objetivo: leerObjetivo(companyId, canal) });
-    // `key` resume companyId y canal.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-
+/** Objetivo del canal (del servidor) y cómo guardarlo (`null` lo borra). `companyId` queda por compatibilidad. */
+export function useObjetivoCanal(_companyId: string, canal: string) {
+  const clave = claveObjetivo(canal);
+  const { query, guardar: mutacion } = useObjetivosServidor();
+  const { mutate } = mutacion;
   const guardar = useCallback(
-    (ventasDia: number | null) => {
-      const objetivo: ObjetivoCanal = { ventasDia: positivo(ventasDia), metaVentasMes: null };
-      try {
-        if (objetivo.ventasDia === null) window.localStorage.removeItem(key);
-        else window.localStorage.setItem(key, JSON.stringify({ ventasDia: objetivo.ventasDia }));
-      } catch {
-        // localStorage lleno o bloqueado: el objetivo queda solo en memoria.
-      }
-      setLeido({ key, objetivo });
-    },
-    [key],
+    (ventasDia: number | null) =>
+      mutate(
+        { canal: clave, ventasDia: positivo(ventasDia) },
+        { onError: (error) => toast.error(mensajeError(error, "No se pudo guardar el objetivo")) },
+      ),
+    [mutate, clave],
   );
-
-  const vigente = leido?.key === key;
-  return { objetivo: vigente ? leido.objetivo : OBJETIVO_VACIO, guardar, cargado: vigente };
+  const ventasDia = positivo(query.data?.objetivos[clave]);
+  return {
+    objetivo: ventasDia === null ? OBJETIVO_VACIO : { ventasDia, metaVentasMes: null },
+    guardar,
+    cargado: query.isSuccess,
+    guardando: mutacion.isPending,
+    error: query.error ?? mutacion.error ?? null,
+  };
 }

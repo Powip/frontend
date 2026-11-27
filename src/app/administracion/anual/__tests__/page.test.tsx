@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { type ApiFalsa, renderConServidor } from "../../_lib/__tests__/servidor-falso";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { aDiaKey, diasDelMes } from "../../_lib/periodo";
 import { calcularResultados, type Resultados } from "../../_lib/resultados";
@@ -7,6 +8,11 @@ import ResumenAnualPage from "../page";
 const mockPeriodo = { fromDate: "2026-11-01", toDate: "2026-11-26" };
 const mockAnuales = jest.fn();
 
+jest.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => ({ auth: { company: { id: "empresa-anual" }, accessToken: "t" } }),
+}));
+jest.mock("@/api/Administracion", () => jest.requireActual("../../_lib/__tests__/servidor-falso").crearApiFalsa());
+const servidor = jest.requireMock<ApiFalsa>("@/api/Administracion");
 jest.mock("@/contexts/AdminPeriodContext", () => ({
   useAdminPeriod: () => mockPeriodo,
 }));
@@ -89,7 +95,7 @@ const ANTERIOR = anual(
 );
 
 const renderPage = () =>
-  render(
+  renderConServidor(
     <TooltipProvider>
       <ResumenAnualPage />
     </TooltipProvider>,
@@ -97,6 +103,7 @@ const renderPage = () =>
 
 beforeEach(() => {
   window.localStorage.clear();
+  servidor.__reiniciar();
   mockPeriodo.fromDate = "2026-11-01";
   mockPeriodo.toDate = "2026-11-26";
   mockAnuales.mockReset();
@@ -153,27 +160,30 @@ describe("Resumen anual", () => {
     expect(filaNov).toHaveTextContent("(hasta hoy)");
   });
 
-  it("sin metas no hay cumplimiento; al cargarlas aparece el avance y el semáforo", () => {
+  it("sin metas no hay cumplimiento; al cargarlas (en el servidor) aparece el avance y el semáforo", async () => {
     renderPage();
+    await waitFor(() => expect(servidor.getMetasAdministracion).toHaveBeenCalledWith(2026, expect.anything()));
     expect(screen.getAllByText("Sin meta")).toHaveLength(3);
     expect(screen.queryByText("Vs meta de ventas")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /Editar metas/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Editar metas/ }));
     fireEvent.change(screen.getByLabelText("Ventas del año (S/)"), { target: { value: "20000" } });
     fireEvent.click(screen.getByRole("button", { name: "Guardar metas" }));
 
-    expect(screen.getByText("50% de la meta")).toBeInTheDocument();
+    expect(await screen.findByText("50% de la meta")).toBeInTheDocument();
     expect(screen.getByText(/A este ritmo cierra en S\/ 11,061 \(55% de la meta\)/)).toBeInTheDocument();
     expect(screen.getByText("Bajo la meta")).toBeInTheDocument();
     expect(screen.getAllByText("Sin meta")).toHaveLength(2);
     // Enero: 1.000 contra 20.000 ÷ 12 = 60 %.
     expect(screen.getByText("Vs meta de ventas")).toBeInTheDocument();
     expect(screen.getByText("60%")).toBeInTheDocument();
-    expect(JSON.parse(window.localStorage.getItem("powip:admin:metas:empresa-anual:2026") ?? "{}")).toEqual({
+    expect(servidor.guardarMetasAdministracion).toHaveBeenCalledWith({
+      anio: 2026,
       ventasAnual: 20000,
       profitAnual: null,
       margenObjetivoPct: null,
     });
+    expect(window.localStorage.length).toBe(0);
   });
 
   it("no revienta sin datos", () => {

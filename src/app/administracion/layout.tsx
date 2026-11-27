@@ -9,6 +9,7 @@ import { AdminPeriodProvider, useAdminPeriod } from "@/contexts/AdminPeriodConte
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { AdminPeriodControl } from "./_components/AdminPeriodControl";
+import { ImportarNavegador } from "./_components/ImportarNavegador";
 import { SECCIONES_ADMIN, ubicarPagina } from "./_components/secciones";
 import { Aviso } from "./_components/ui";
 import { etiquetaPeriodo, hoyLima, rangoDePreset } from "./_lib/periodo";
@@ -114,18 +115,11 @@ function AdminShell({ children }: { children: React.ReactNode }) {
                   </ul>
                 )}
                 {!ubicacion.enMenu && (
-                  <Aviso tono="warn" className="mb-4" titulo="Esta sección no está en el menú">
-                    Sus datos se guardan solo en este navegador: otro usuario u otra computadora no los ve. Vuelve al
-                    menú cuando tenga respaldo en el servidor.
-                  </Aviso>
-                )}
-                {ubicacion.enMenu && ubicacion.pagina.soloNavegador && (
-                  <Aviso tono="warn" className="mb-4" titulo="Los datos de esta sección se guardan solo en este navegador">
-                    Otro usuario u otra computadora no los ve, y se pierden si se borran los datos del navegador.
-                  </Aviso>
+                  <Aviso tono="warn" className="mb-4" titulo="Esta sección no está en el menú" />
                 )}
               </>
             )}
+            <ImportarNavegador />
             {children}
           </main>
         </div>

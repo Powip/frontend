@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import AdvertisingPage from "../page";
 
 const mockPeriodo = { fromDate: "2026-11-01", toDate: "2026-11-26", setPeriod: jest.fn() };
@@ -33,11 +33,6 @@ jest.mock("@/components/advertising/AdvertisingLivePanel", () => ({
     return props.manualContent ?? null;
   },
 }));
-jest.mock("next/dynamic", () => () =>
-  function ManualStub() {
-    return "registro manual montado";
-  },
-);
 
 beforeEach(() => {
   mockQuery = "";
@@ -87,13 +82,10 @@ describe("Inversión publicitaria", () => {
     expect(mockPeriodo.setPeriod).toHaveBeenCalledWith("2026-09-01", "2026-09-30");
   });
 
-  it("el registro manual va rotulado y se monta solo al abrirlo", () => {
+  it("ya no ofrece el registro manual del navegador (se retiró en la Fase 3)", () => {
     render(<AdvertisingPage />);
-    expect(
-      screen.getByText("Registro manual: se guarda solo en este navegador y no entra en los cálculos."),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("registro manual montado")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Ver registros manuales" }));
-    expect(screen.getByText("registro manual montado")).toBeInTheDocument();
+    expect(ultimo(mockLive).manualContent).toBeUndefined();
+    expect(screen.queryByText(/Registro manual/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ver registros manuales" })).not.toBeInTheDocument();
   });
 });

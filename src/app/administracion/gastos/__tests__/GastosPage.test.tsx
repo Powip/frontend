@@ -9,6 +9,7 @@ import type { IGastoOperativo } from "@/interfaces/IAdmin";
 import { datosPeriodoDe } from "../../_lib/__tests__/servidor-fixtures";
 import { type DatosPeriodo, useResultadosPeriodo } from "../../_lib/useResultados";
 import type { PedidoAdmin } from "../../_lib/ventas";
+import { type ApiFalsa, comprasVacias } from "../../_lib/__tests__/servidor-falso";
 import GastosPage from "../page";
 
 jest.mock("@/contexts/AdminPeriodContext", () => ({ useAdminPeriod: jest.fn() }));
@@ -25,6 +26,9 @@ jest.mock("@/components/advertising/AdvertisingCompanySpend", () => ({
   },
 }));
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
+jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ auth: { company: { id: "c1" }, accessToken: "t" } }) }));
+jest.mock("@/api/Administracion", () => jest.requireActual("../../_lib/__tests__/servidor-falso").crearApiFalsa());
+const servidor = jest.requireMock<ApiFalsa>("@/api/Administracion");
 
 const gasto = (id: string, categoria: IGastoOperativo["categoria"], monto: number, mes = 11): IGastoOperativo => ({
   id,
@@ -91,6 +95,7 @@ beforeEach(() => {
   );
   jest.mocked(createGasto).mockResolvedValue(gasto("nuevo", "OTRO", 150.5));
   jest.mocked(deleteGasto).mockResolvedValue(undefined);
+  servidor.__reiniciar();
 });
 
 it("muestra lo que le toca al periodo y el costo de lo vendido, con el aviso de ventas sin costo", () => {
@@ -105,9 +110,23 @@ it("muestra lo que le toca al periodo y el costo de lo vendido, con el aviso de 
   const resumen = screen.getByRole("table", { name: "Gastos de noviembre 2026 por categoría" });
   const planilla = within(resumen).getByRole("row", { name: /Planilla/ });
   expect(within(planilla).getAllByRole("cell").map((c) => c.textContent)).toEqual([formatSoles(3000), formatSoles(2600)]);
-  const mercaderia = within(resumen).getByRole("row", { name: /Compra de mercadería/ });
+  const mercaderia = within(resumen).getByRole("row", { name: /Compra de mercadería cargada/ });
   expect(within(mercaderia).getAllByRole("cell").map((c) => c.textContent)).toEqual([formatSoles(1000), "No entra"]);
   expect(screen.getByText(/Al periodo le tocan 26 de 30 días de noviembre/)).toBeInTheDocument();
+});
+
+it("muestra las compras de inventario pagadas en el mes (módulo Compras) junto a la compra cargada a mano", async () => {
+  servidor.__ponerCompras({
+    ...comprasVacias("2026-11-01", "2026-11-30"),
+    pagadas: { compras: 3, monto: 17603, porMes: [{ mes: "2026-11", compras: 3, monto: 17603 }] },
+  });
+  renderPagina();
+  const resumen = screen.getByRole("table", { name: "Gastos de noviembre 2026 por categoría" });
+  const inventario = await within(resumen).findByRole("row", { name: /Compras de inventario/ });
+  await waitFor(() =>
+    expect(within(inventario).getAllByRole("cell").map((c) => c.textContent)).toEqual([formatSoles(17603), "No entra"]),
+  );
+  expect(servidor.getComprasAdministracion).toHaveBeenCalledWith("2026-11-01", "2026-11-30", expect.anything());
 });
 
 it("el formulario arranca en el mes del periodo y sigue al periodo cuando cambia", () => {
