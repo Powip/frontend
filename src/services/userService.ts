@@ -72,6 +72,25 @@ export const getUsersByCompany = async (
   return response.data;
 };
 
+export interface CompanyUserSummary {
+  id: string;
+  name?: string | null;
+  surname?: string | null;
+  email?: string | null;
+}
+
+/** Usuarios de la empresa con la sesión actual (axiosAuth agrega el Bearer). */
+export const listCompanyUsers = async (
+  companyId: string,
+  signal?: AbortSignal,
+): Promise<CompanyUserSummary[]> => {
+  const response = await axiosAuth.get(
+    `${API_AUTH}/api/v1/auth/company/${encodeURIComponent(companyId)}/users`,
+    { signal },
+  );
+  return Array.isArray(response.data) ? response.data : [];
+};
+
 // Obtener todos los usuarios de la plataforma
 export const getAllUsers = async (accessToken: string): Promise<any[]> => {
   const response = await axios.get(`${API_AUTH}/api/v1/auth/users`, {

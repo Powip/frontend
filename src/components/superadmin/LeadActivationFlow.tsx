@@ -22,7 +22,6 @@ import { cn } from "@/lib/utils";
 import { createPlatformUser, deleteUser } from "@/services/userService";
 import { createCompany, deleteCompany } from "@/services/companyService";
 import { createSubscription, deleteSubscription } from "@/services/subscriptionService";
-import { createClient } from "@/utils/supabase/client";
 
 interface LeadActivationFlowProps {
   lead: any;
@@ -102,25 +101,19 @@ export const LeadActivationFlow: React.FC<LeadActivationFlowProps> = ({
     }
   }, [lead, plans]);
 
+  // Pasos iniciales de onboarding: los crea la API del superadmin (service role).
+  // FEAT-23 T16: antes era un insert directo con la anon key desde el navegador.
+  // Como antes, si falla no corta el alta: solo queda en la consola.
   const initOnboarding = async (businessId: string) => {
-    const steps = [
-      'business_profile',
-      'store_config',
-      'inventory_init',
-      'first_order',
-      'integrations',
-      'final_training'
-    ];
-    
-    const supabase = await createClient();
-    const inserts = steps.map(step => ({
-      business_id: businessId,
-      step_code: step,
-      completed: false,
-      completion_pct: 0
-    }));
-
-    await supabase.from('onboarding_progress').insert(inserts);
+    try {
+      const res = await fetch(`/api/superadmin/businesses/${businessId}/onboarding`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) console.error("[LeadActivation] No se pudo crear el onboarding:", res.status);
+    } catch (err) {
+      console.error("[LeadActivation] No se pudo crear el onboarding:", err);
+    }
   };
 
   const updateLeadStatus = async (businessId?: string, password?: string) => {
