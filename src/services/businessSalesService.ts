@@ -35,6 +35,9 @@ export interface BusinessSalesPage {
   kpis?: {
     pendientes: number;
     anuladas: number;
+    /** Ventas del período en cualquier estado (número de la pestaña Todas). */
+    todas?: number;
+    pendientesAntiguos?: number;
     amounts: { currency: string | null; paid: number; pending: number }[];
     /** Saldo y cantidad de ventas con saldo > 0 (sin anuladas) del rango de KPIs, por moneda. */
     pendingTotal?: { currency: string | null; pending: number; count: number }[];
