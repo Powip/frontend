@@ -251,6 +251,15 @@ export interface Sale extends UnitAssignmentState {
 
 /** Base de una pestaña mientras su lista no está completa (referencia estable). */
 const NO_SALES: Sale[] = [];
+
+const STOCK_RESERVE_REASON = "su stock aún no está reservado. Márcalas como Preparado con «Cambiar estado» y luego imprime las etiquetas.";
+
+/** Aviso de «Imprimir seleccionados»: qué ventas no se imprimieron y por qué. */
+function printBlockedMessage(sales: Sale[], reason: string) {
+  const numbers = sales.map((sale) => sale.orderNumber);
+  const list = numbers.length > 5 ? `${numbers.slice(0, 5).join(", ")} y ${numbers.length - 5} más` : numbers.join(", ");
+  return `No se pueden imprimir ${sales.length} venta(s) (${list}): ${reason}`;
+}
 const SalesOrderDetailModal = lazy(() => import("@/components/modals/CustomerServiceModal"));
 
 /** The server owns confirmation eligibility; never expose a rejected row to stale actions. */
@@ -989,8 +998,19 @@ Estado: ${sale.status}
     }
     if (!canMutateIds(Array.from(selectedSaleIds))) return;
 
-    const blocked = selectedPendientes.map((sale) => salesPhysicalOperationBlockReason(sale) || assignmentBlockReason(sale, "PREPARADO")).find(Boolean);
-    if (blocked) { toast.error(blocked); return; }
+    const blockedSales = selectedPendientes.flatMap((sale) => {
+      const reason = salesPhysicalOperationBlockReason(sale) || assignmentBlockReason(sale, "PREPARADO");
+      if (!reason) return [];
+      return [{ sale, reason: canPrepareDeferredManualOrder(sale) ? STOCK_RESERVE_REASON : reason }];
+    });
+    if (blockedSales.length > 0) {
+      const salesByReason = new Map<string, Sale[]>();
+      for (const { sale, reason } of blockedSales) salesByReason.set(reason, [...(salesByReason.get(reason) ?? []), sale]);
+      toast.error(
+        [...salesByReason].map(([reason, sales]) => printBlockedMessage(sales, reason)).join(" "),
+      );
+      return;
+    }
     setPendingPrintSales(selectedPendientes);
     setPendingPrintScope(printScope);
     setPrintPreviewOpen(true);
