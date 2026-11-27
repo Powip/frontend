@@ -7,7 +7,7 @@
  * 4. Aviso de modo de pruebas mientras ms-sunat no envía a SUNAT.
  * 5. El próximo número es obligatorio y siempre se envía (libera el freno).
  * 6. Serie frenada por 1033: aviso en el RUC.
- * 7. Freno de duplicados (Consulta Integrada): solo si ms-sunat da permiso.
+ * 7. Freno de duplicados (Consulta Integrada): lo ven todos los que entran a Facturación.
  */
 
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -127,7 +127,7 @@ beforeEach(() => {
   (useDeleteSunatProfile as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
   (useReplaceSunatProfileCertificate as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
   jest.mocked(getGreSettingsApi).mockResolvedValue(SETTINGS);
-  jest.mocked(getCpeValidationAccessApi).mockResolvedValue({ canManage: false, serviceConfigured: true });
+  jest.mocked(getCpeValidationAccessApi).mockResolvedValue({ serviceConfigured: true });
   jest.mocked(getCpeValidationCredentialApi).mockResolvedValue(null);
   jest.mocked(upsertGreCredentialApi).mockResolvedValue({
     sunatProfileId: "p2",
@@ -242,16 +242,17 @@ describe("CertificadoTab: credenciales GRE", () => {
     expect(screen.queryByTestId("gre-series-brake-20222222222")).not.toBeInTheDocument();
   });
 
-  it("sin permiso de ms-sunat no muestra el freno de duplicados", async () => {
+  it("todos los usuarios de Facturación ven el freno de duplicados en cada RUC", async () => {
     setup();
-    await greBlock("20111111111");
-    await waitFor(() => expect(getCpeValidationAccessApi).toHaveBeenCalled());
-    expect(screen.queryByTestId("cpe-validation-20111111111")).not.toBeInTheDocument();
-    expect(getCpeValidationCredentialApi).not.toHaveBeenCalled();
+    const acme = await screen.findByTestId("cpe-validation-20111111111");
+    await waitFor(() => expect(acme).toHaveTextContent("sin credenciales"));
+    expect(await screen.findByTestId("cpe-validation-20222222222")).toBeInTheDocument();
+    expect(within(acme).queryByTestId("cpe-validation-service-off")).not.toBeInTheDocument();
+    expect(jest.mocked(getCpeValidationCredentialApi).mock.calls.map(([id]) => id)).toEqual(expect.arrayContaining(["p1", "p2"]));
   });
 
-  it("con permiso: configura y quita las credenciales de la Consulta Integrada", async () => {
-    jest.mocked(getCpeValidationAccessApi).mockResolvedValue({ canManage: true, serviceConfigured: false });
+  it("configura y quita las credenciales de la Consulta Integrada", async () => {
+    jest.mocked(getCpeValidationAccessApi).mockResolvedValue({ serviceConfigured: false });
     jest.mocked(getCpeValidationCredentialApi).mockImplementation(async (id: string) =>
       id === "p1" ? { sunatProfileId: "p1", clientId: "cpe-acme", hasClientSecret: true, updatedAt: "2026-11-27T10:00:00Z" } : null,
     );

@@ -17,9 +17,9 @@ import {
 import { cpeValidationKeys, useCpeValidationCredential } from "@/features/sunat/cpe-validation/use-cpe-validation";
 
 // Freno de duplicados (facturas, boletas y notas): credenciales de la Consulta
-// Integrada de Validez de Comprobantes por RUC. Solo se muestra a los usuarios
-// que ms-sunat deja administrarlas (lista de correos en su configuración). Sin
-// credenciales, la emisión funciona igual que siempre.
+// Integrada de Validez de Comprobantes por RUC. Se muestra a todos los usuarios
+// que ya ven Facturación. Sin credenciales, la emisión funciona igual que
+// siempre.
 
 interface IssuerProfile {
   id: string;

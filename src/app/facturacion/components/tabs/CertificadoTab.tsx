@@ -222,9 +222,7 @@ export function CertificadoTab({ onAddIssuer }: CertificadoTabProps = {}) {
                   </Button>
                 </div>
 
-                {cpeAccess.data?.canManage ? (
-                  <CpeValidationCredentialsRow profile={profile} serviceConfigured={cpeAccess.data.serviceConfigured} />
-                ) : null}
+                <CpeValidationCredentialsRow profile={profile} serviceConfigured={cpeAccess.data?.serviceConfigured ?? true} />
 
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
                   <div className="flex flex-wrap gap-2">

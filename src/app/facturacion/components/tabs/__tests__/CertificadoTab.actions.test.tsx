@@ -19,6 +19,10 @@ jest.mock("@/features/sunat/despatch-advice/hooks/use-despatch-advices", () => (
 jest.mock("@/features/sunat/cpe-validation/use-cpe-validation", () => ({
   useCpeValidationAccess: () => ({ data: undefined, isPending: false, isError: false }),
 }));
+// El freno de duplicados tiene su propio test (CertificadoTab.gre.test.tsx).
+jest.mock("@/app/facturacion/components/CpeValidationCredentials", () => ({
+  CpeValidationCredentialsRow: () => null,
+}));
 jest.mock("@/app/facturacion/components/modals/CertificadoUploadModal", () => ({
   __esModule: true,
   default: () => null,
