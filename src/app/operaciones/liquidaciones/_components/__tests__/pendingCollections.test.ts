@@ -183,25 +183,24 @@ describe("money helpers", () => {
     expect(allocateDeposit([5000, 3000], 9000)).toEqual([5000, 3000]);
   });
   it("uses the order update day as collection date, never a future one", () => {
-    expect(collectionDate("2026-11-20T15:00:00.000Z", "2026-11-27")).toBe("2026-11-20");
-    expect(collectionDate("2026-11-29T15:00:00.000Z", "2026-11-27")).toBe("2026-11-27");
+    expect(collectionDate("2026-11-20T15:00:00.000Z", "2026-11-27", "America/Lima")).toBe("2026-11-20");
+    expect(collectionDate("2026-11-29T15:00:00.000Z", "2026-11-27", "America/Lima")).toBe("2026-11-27");
     expect(collectionDate(null, "2026-11-27")).toBe("2026-11-27");
     expect(collectionDate("basura", "2026-11-27")).toBe("2026-11-27");
   });
   it("reads timestamps as the local day, not the UTC day (Lima after 19:00 is already tomorrow in UTC)", () => {
-    const previous = process.env.TZ;
-    process.env.TZ = "America/Lima";
-    try {
-      // 20:30 del 27-11 en Lima = 01:30Z del 28-11.
-      expect(localDay("2026-11-28T01:30:00.000Z")).toBe("2026-11-27");
-      expect(collectionDate("2026-11-28T01:30:00.000Z", "2026-11-27")).toBe("2026-11-27");
-      expect(collectionDate("2026-11-27T01:30:00.000Z", "2026-11-27")).toBe("2026-11-26");
-      expect(localDay("2026-11-20")).toBe("2026-11-20");
-      expect(localDay(null)).toBe("");
-      expect(localDay("basura")).toBe("");
-    } finally {
-      if (previous === undefined) delete process.env.TZ;
-      else process.env.TZ = previous;
-    }
+    const lima = "America/Lima";
+    // 20:30 del 27-11 en Lima = 01:30Z del 28-11.
+    expect(localDay("2026-11-28T01:30:00.000Z", lima)).toBe("2026-11-27");
+    expect(collectionDate("2026-11-28T01:30:00.000Z", "2026-11-27", lima)).toBe("2026-11-27");
+    expect(collectionDate("2026-11-27T01:30:00.000Z", "2026-11-27", lima)).toBe("2026-11-26");
+    expect(localDay("2026-11-27T15:00:00.000Z", "UTC")).toBe("2026-11-27");
+    expect(localDay("2026-11-20")).toBe("2026-11-20");
+    expect(localDay(null)).toBe("");
+    expect(localDay("basura")).toBe("");
+  });
+  it("defaults to the runtime's local day", () => {
+    const local = new Date(2026, 10, 27, 23, 30);
+    expect(localDay(local.toISOString())).toBe("2026-11-27");
   });
 });

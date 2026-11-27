@@ -193,20 +193,28 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
 /**
  * Día local (YYYY-MM-DD) de un timestamp de la API. Cortar el ISO daría el día
  * UTC: en Lima, desde las 19:00 ya es «mañana». "" si no es una fecha válida.
+ * `timeZone` solo para tests; sin él se usa la zona del navegador.
  */
-export function localDay(value: string | null | undefined): string {
+export function localDay(value: string | null | undefined, timeZone?: string): string {
   if (!value) return "";
   if (DAY.test(value)) return value;
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return "";
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
 /**
  * Fecha YYYY-MM-DD válida para ms-courier: el día local de la última
  * actualización, nunca posterior a `today` (el día local de hoy).
  */
-export function collectionDate(updatedAt: string | null, today: string): string {
-  const day = localDay(updatedAt);
+export function collectionDate(updatedAt: string | null, today: string, timeZone?: string): string {
+  const day = localDay(updatedAt, timeZone);
   return day && day <= today ? day : today;
 }

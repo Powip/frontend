@@ -20,7 +20,7 @@ const row = (orderId: string, pendingCents: number, overrides: Partial<PendingCo
   courierLabel: "Shalom",
   courierId: "courier1",
   currency: "PEN",
-  updatedAt: "2026-11-20T15:00:00.000Z",
+  updatedAt: "2026-11-20T12:00:00.000Z",
   days: 7,
   totalCents: pendingCents,
   paidToBusinessCents: 0,
