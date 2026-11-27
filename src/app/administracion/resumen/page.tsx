@@ -22,6 +22,7 @@ import type { ReactNode } from "react";
 import { ProgressBar } from "@/components/panel-control/charts/ProgressBar";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
 import { calcularDelta } from "@/features/panel-control/shared/utils/delta";
+import { BloqueGastoAgrupado } from "../_components/bloque-gasto-agrupado";
 import { type Nivel, NivelPill } from "../_components/nivel";
 import {
   Aviso,
@@ -39,6 +40,7 @@ import {
   PanelSkeleton,
   TablaCascada,
 } from "../_components/ui";
+import { agruparCompraPorPrenda, agruparImplementos } from "../_lib/gastosResumen";
 import { metaVentasMensual, useMetasAnuales } from "../_lib/metasStorage";
 import {
   type DiaKey,
@@ -546,6 +548,21 @@ export default function ResumenAdminPage() {
             </p>
           </PanelCard>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
+        <BloqueGastoAgrupado
+          titulo="Compra de mercadería por prenda"
+          nota="Parte del periodo. No resta a la utilidad: el costo de la prenda ya se cuenta cuando se vende."
+          vacio="Sin compra de mercadería cargada en el periodo"
+          datos={agruparCompraPorPrenda(actual.gastos.filas)}
+        />
+        <BloqueGastoAgrupado
+          titulo="Implementos"
+          nota="Parte del periodo. Ya está restado en «Gastos fijos» del estado de resultados."
+          vacio="Sin implementos cargados en el periodo"
+          datos={agruparImplementos(actual.gastos.filas)}
+        />
       </div>
     </div>
   );

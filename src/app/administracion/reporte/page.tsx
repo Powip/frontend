@@ -407,7 +407,7 @@ export default function ReporteRapidoPage() {
       titulo: "No hay gastos fijos cargados para este periodo",
       texto: (
         <>
-          La utilidad operativa no descuenta planilla, herramientas ni otros gastos.{" "}
+          La utilidad operativa no descuenta planilla, herramientas, implementos ni otros gastos.{" "}
           <Link href={RUTA_GASTOS} className="font-semibold text-pc-primary hover:underline">
             Cárgalos en Costos › Gastos y costos
           </Link>

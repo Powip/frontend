@@ -4,6 +4,8 @@ export type CategoriaGasto =
   | 'PUBLICIDAD'
   | 'COURIER_PROPIO'
   | 'OTRO'
+  // Gasto operativo fijo (bolsas, cintas, etiquetas...): resta a la utilidad.
+  | 'IMPLEMENTOS'
   // Compra de mercadería por prenda. No es gasto operativo: no entra al P&L.
   | 'INVERSION';
 
