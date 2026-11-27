@@ -44,7 +44,22 @@ interface PeriodSelectorProps {
    * mismo estado compartido (ver `QuickPeriodButtons`).
    */
   value?: { from: string; to: string };
+  /**
+   * Permite «Todo el historial» (fechas vacías) y lo usa de inicio. Admite
+   * además un rango abierto (solo desde o solo hasta).
+   */
+  allowAll?: boolean;
 }
+
+const ALL_HISTORY = "Todo el historial";
+
+const toRange = (value: { from: string; to: string }): DateRange | undefined =>
+  value.from || value.to
+    ? {
+        from: value.from ? parseISO(value.from) : undefined,
+        to: value.to ? parseISO(value.to) : undefined,
+      }
+    : undefined;
 
 type Preset = {
   label: string;
@@ -119,28 +134,34 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
   onPeriodChange,
   className,
   value,
+  allowAll,
 }) => {
-  const [date, setDate] = useState<DateRange | undefined>(() =>
-    value
-      ? { from: parseISO(value.from), to: parseISO(value.to) }
-      : { from: startOfMonth(new Date()), to: endOfMonth(new Date()) },
-  );
+  const [date, setDate] = useState<DateRange | undefined>(() => {
+    if (value) return toRange(value);
+    return allowAll ? undefined : { from: startOfMonth(new Date()), to: endOfMonth(new Date()) };
+  });
 
   // Cuando el rango viene controlado (`value`), cualquier cambio externo
   // (ej. los atajos de `QuickPeriodButtons`) debe reflejarse acá también.
   useEffect(() => {
     if (!value) return;
-    setDate({ from: parseISO(value.from), to: parseISO(value.to) });
+    setDate(toRange(value));
   }, [value?.from, value?.to]);
 
   const activePreset = useMemo(() => {
+    if (allowAll && !date?.from && !date?.to) return ALL_HISTORY;
     if (!date?.from || !date?.to) return "Personalizado";
     const matched = PRESETS.find((p) => {
       const r = p.getValue();
       return r.from && r.to && isSameDay(r.from, date.from!) && isSameDay(r.to, date.to!);
     });
     return matched ? matched.label : "Personalizado";
-  }, [date]);
+  }, [date, allowAll]);
+
+  const selectAllHistory = () => {
+    setDate(undefined);
+    onPeriodChange("", "");
+  };
 
   const handlePresetChange = (presetLabel: string) => {
     const preset = PRESETS.find((p) => p.label === presetLabel);
@@ -158,6 +179,12 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
 
   const handleCustomDateChange = (newDate: DateRange | undefined) => {
     setDate(newDate);
+    // Con «Todo el historial», un rango a medias también se aplica: la etiqueta
+    // y los datos no pueden decir cosas distintas.
+    if (allowAll && !(newDate?.from && newDate?.to)) {
+      onPeriodChange(newDate?.from ? format(newDate.from, "yyyy-MM-dd") : "", "");
+      return;
+    }
     if (newDate?.from && newDate?.to) {
       onPeriodChange(
         format(newDate.from, "yyyy-MM-dd"),
@@ -178,6 +205,11 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const displayDate = () => {
+    if (allowAll) {
+      if (!date?.from && !date?.to) return ALL_HISTORY;
+      if (!date?.to && date?.from) return `Desde ${format(date.from, "PPP", { locale: es })}`;
+      if (!date?.from && date?.to) return `Hasta ${format(date.to, "PPP", { locale: es })}`;
+    }
     if (!date?.from) return "Seleccionar fechas";
     if (!date.to || isSameDay(date.from, date.to)) {
       return format(date.from, "PPP", { locale: es });
@@ -198,7 +230,7 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
             variant={"outline"}
             className={cn(
               "w-full sm:w-[300px] justify-start text-left font-normal bg-card hover:bg-accent border-muted-foreground/20",
-              !date && "text-muted-foreground",
+              !date && !allowAll && "text-muted-foreground",
             )}
           >
             <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
@@ -214,6 +246,22 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
             <p className="text-[10px] font-bold uppercase text-muted-foreground px-2 py-1">
               Presets
             </p>
+            {allowAll && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "justify-between font-normal text-xs h-8 px-2",
+                  activePreset === ALL_HISTORY
+                    ? "bg-primary/10 text-primary font-medium hover:bg-primary/20"
+                    : "hover:bg-accent",
+                )}
+                onClick={selectAllHistory}
+              >
+                {ALL_HISTORY}
+                {activePreset === ALL_HISTORY && <Check className="h-3 w-3" />}
+              </Button>
+            )}
             {PRESETS.map((preset) => (
               <Button
                 key={preset.label}

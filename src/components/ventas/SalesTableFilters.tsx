@@ -328,7 +328,23 @@ export function SalesTableFilters({
                 className="h-8 min-w-0 max-w-full text-sm"
               />
             </div>
-            <div className="grid min-w-0 grid-cols-3 gap-2 sm:col-span-2 xl:col-span-1 xl:self-end">
+            <div
+              className={`grid min-w-0 gap-2 sm:col-span-2 xl:col-span-1 xl:self-end ${
+                dateWindow.defaultFromDate === "" ? "grid-cols-4" : "grid-cols-3"
+              }`}
+            >
+              {/* Sin fecha por defecto, vacío es todo el historial */}
+              {dateWindow.defaultFromDate === "" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 min-w-0 px-2"
+                  onClick={() => dateWindow.onChange({ fromDate: "", toDate: "" })}
+                >
+                  Todo
+                </Button>
+              )}
               {[7, 15, 30].map((n) => (
                 <Button
                   key={n}

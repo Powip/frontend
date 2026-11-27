@@ -3,12 +3,11 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 /**
  * Ventas — cada pestaña baja solo lo que muestra (FEAT-27).
  *
- * 1. Pendientes muestra los recientes; los viejos están en "Pendientes antiguos",
- *    que se baja recién al elegirlo y nunca queda sin acceso.
+ * 1. Sin elegir fechas, tarjetas, pestañas, lista y pie cuentan todo el historial;
+ *    "Pendientes antiguos" filtra los de más de 30 días y se pide recién al elegirlo.
  * 2. Todas no se pide hasta entrar a la pestaña; su número sale del conteo.
- * 3. El período de Anuladas y Todas va al servidor (con debounce) y filtra al instante.
- * 4. Los KPIs tienen su propia consulta por período: dan lo mismo que antes
- *    aunque el período sea más viejo que lo bajado.
+ * 3. El período es uno solo, va al servidor (con debounce) y filtra al instante.
+ * 4. Los KPIs salen del servidor para ese mismo período.
  */
 
 jest.mock("@/hooks/useChatSalesFilter", () => ({
@@ -45,14 +44,14 @@ jest.mock("@/utils/exportSalesExcel", () => ({
   ...jest.requireActual("@/utils/exportSalesExcel"),
   exportSalesToExcel: jest.fn(),
 }));
-// El período de los KPIs lo elige cada test (el selector real avisa el mes actual al montar).
-let mockKpiPeriod: [string, string] = ["2026-09-01", "2026-09-30"];
+// El período lo elige cada test; null = todo el historial (el selector no avisa nada).
+let mockKpiPeriod: [string, string] | null = null;
 jest.mock("@/components/dashboard/PeriodSelector", () => {
   const { useEffect } = jest.requireActual<typeof import("react")>("react");
   return {
     PeriodSelector: ({ onPeriodChange }: { onPeriodChange: (from: string, to: string) => void }) => {
       useEffect(() => {
-        onPeriodChange(mockKpiPeriod[0], mockKpiPeriod[1]);
+        if (mockKpiPeriod) onPeriodChange(mockKpiPeriod[0], mockKpiPeriod[1]);
       }, []); // eslint-disable-line react-hooks/exhaustive-deps
       return null;
     },
@@ -162,12 +161,15 @@ function labelOf(from: string | undefined, opts?: Opts): Label | null {
 let overrides: Partial<Record<Label, Override>> = {};
 let retries: Record<Label, jest.Mock>;
 let counts: { todas: number | null; antiguos: number | null };
+// true = el servidor manda también los números de pestaña del período (kpis.todas).
+let serverTabs = false;
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockBulkActions.length = 0;
   mockBusinessStoreIds = ["store-1"];
-  mockKpiPeriod = ["2026-09-01", "2026-09-30"];
+  mockKpiPeriod = null;
+  serverTabs = false;
   overrides = {};
   retries = { pendientes: jest.fn(), antiguos: jest.fn(), anuladas: jest.fn(), todas: jest.fn(), kpis: jest.fn() };
   counts = { todas: 1011, antiguos: 2 };
@@ -213,7 +215,7 @@ beforeEach(() => {
         data: override?.loading || override?.error ? EMPTY : orders.slice((query.page - 1) * query.limit, query.page * query.limit),
         total: orders.length, page: query.page, totalPages: Math.max(1, Math.ceil(orders.length / query.limit)),
         counts: { pendientes: DATA.pendientes.length, anuladas: DATA.anuladas.length, todas: businessTotal, pendientesAntiguos: antiguosTotal },
-        kpis: { pendientes: kpiRows.filter(row => PEND.includes(row.status)).length, anuladas: kpiRows.filter(row => row.status === "ANULADO").length, amounts: [...balances.values()] },
+        kpis: { pendientes: kpiRows.filter(row => PEND.includes(row.status)).length, anuladas: kpiRows.filter(row => row.status === "ANULADO").length, amounts: [...balances.values()], ...(serverTabs ? { todas: kpiRows.length, pendientesAntiguos: 1 } : {}) },
         metadata: { products: [] },
       };
     }, [source, kpiSource, query.page, query.limit, query.sort, query.dateFrom, query.dateTo, query.kpiDateFrom, query.kpiDateTo, override?.loading, override?.error, businessTotal, antiguosTotal]);
@@ -245,23 +247,23 @@ const callsFor = (statuses: OrderStatus[]) =>
 const kpiValue = (title: string) =>
   screen.getByText(title, { selector: "p" }).parentElement?.querySelector("h3")?.textContent;
 
-describe("VentasPage — Pendientes recientes y antiguos", () => {
-  it("muestra los recientes y ofrece Pendientes antiguos con su contador", () => {
+describe("VentasPage — Pendientes: todos y antiguos", () => {
+  it("muestra todos y ofrece Pendientes antiguos con su contador", () => {
     render(<VentasPage />);
     const panel = screen.getByRole("tabpanel");
 
     expect(ordersIn(panel)).toEqual(["ORD-101"]);
-    expect(within(panel).getByRole("button", { name: "Recientes" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(panel).getByRole("button", { name: "Todos" })).toHaveAttribute("aria-pressed", "true");
     const antiguos = within(panel).getByRole("button", { name: "Pendientes antiguos (2)" });
     expect(antiguos).toBeEnabled();
     expect(antiguos).toHaveAttribute("aria-pressed", "false");
-    expect(within(panel).getByText("Los pendientes de más de 30 días están en Pendientes antiguos")).toBeInTheDocument();
+    expect(within(panel).getByText("Pendientes antiguos: más de 30 días, primero los que llevan más tiempo sin movimiento")).toBeInTheDocument();
   });
 
   it("baja los antiguos recién al elegirlos, primero los que llevan más días sin movimiento", () => {
     render(<VentasPage />);
     expect(jest.mocked(useBusinessSalesPage).mock.calls.every(([, query]) => query.sort !== "updated_asc")).toBe(true);
-    expect(jest.mocked(useBusinessSalesPage).mock.calls.at(-1)?.[1]).toEqual(expect.objectContaining({ dateFrom: "2026-08-28", limit: 10 }));
+    expect(jest.mocked(useBusinessSalesPage).mock.calls.at(-1)?.[1]).toEqual(expect.objectContaining({ dateFrom: "", dateTo: "", limit: 10 }));
 
     fireEvent.click(screen.getByRole("button", { name: "Pendientes antiguos (2)" }));
 
@@ -272,11 +274,11 @@ describe("VentasPage — Pendientes recientes y antiguos", () => {
     expect(within(panel).getByText("37 días sin movimiento")).toBeInTheDocument();
     expect(within(panel).getByRole("button", { name: "Pendientes antiguos (2)" })).toHaveAttribute("aria-pressed", "true");
 
-    fireEvent.click(within(panel).getByRole("button", { name: "Recientes" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Todos" }));
     expect(ordersIn(panel)).toEqual(["ORD-101"]);
   });
 
-  it("al cambiar entre Recientes y Antiguos se vacía la selección", () => {
+  it("al cambiar entre Todos y Antiguos se vacía la selección", () => {
     render(<VentasPage />);
     const panel = screen.getByRole("tabpanel");
     fireEvent.click(within(panel).getAllByRole("checkbox")[0]);
@@ -285,19 +287,19 @@ describe("VentasPage — Pendientes recientes y antiguos", () => {
     fireEvent.click(within(panel).getByRole("button", { name: "Pendientes antiguos (2)" }));
     expect(screen.getByRole("button", { name: /Imprimir seleccionados \(0\)/ })).toBeDisabled();
 
-    fireEvent.click(within(panel).getByRole("button", { name: "Recientes" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Todos" }));
     expect(screen.getByRole("button", { name: /Imprimir seleccionados \(0\)/ })).toBeDisabled();
   });
 
-  it("al volver a Recientes deja de pedir los antiguos", () => {
+  it("al volver a Todos deja de pedir los antiguos", () => {
     render(<VentasPage />);
     const lastQuery = () => jest.mocked(useBusinessSalesPage).mock.calls.at(-1)?.[1];
 
     fireEvent.click(screen.getByRole("button", { name: "Pendientes antiguos (2)" }));
     expect(lastQuery()).toEqual(expect.objectContaining({ dateTo: "2026-08-27", sort: "updated_asc" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Recientes" }));
-    expect(lastQuery()).toEqual(expect.objectContaining({ dateFrom: "2026-08-28", sort: "created_desc" }));
+    fireEvent.click(screen.getByRole("button", { name: "Todos" }));
+    expect(lastQuery()).toEqual(expect.objectContaining({ dateTo: "", sort: "created_desc" }));
   });
 
   it("si el contador no está (carga o falla), el acceso sigue habilitado y sin número", () => {
@@ -342,7 +344,7 @@ describe("VentasPage — Anuladas y Todas por período", () => {
 
     fireEvent.mouseDown(screen.getByRole("tab", { name: /Todas las Ventas/ }));
 
-    expect(useBusinessSalesPage).toHaveBeenLastCalledWith(["store-1"], expect.objectContaining({ tab: "todas", dateFrom: "2026-08-28", limit: 10 }));
+    expect(useBusinessSalesPage).toHaveBeenLastCalledWith(["store-1"], expect.objectContaining({ tab: "todas", dateFrom: "", dateTo: "", kpiDateFrom: "", kpiDateTo: "", limit: 10 }));
     expect(ordersIn(screen.getByRole("tabpanel"))).toEqual(["ORD-401", "ORD-101", "ORD-301"]);
   });
 
@@ -372,7 +374,7 @@ describe("VentasPage — Anuladas y Todas por período", () => {
     render(<VentasPage />);
     fireEvent.mouseDown(screen.getByRole("tab", { name: /Todas las Ventas/ }));
     const panel = screen.getByRole("tabpanel");
-    expect(within(panel).getByLabelText("Desde")).toHaveValue("2026-08-28");
+    expect(within(panel).getByLabelText("Desde")).toHaveValue("");
 
     fireEvent.click(within(panel).getByRole("button", { name: "7 días" }));
 
@@ -588,12 +590,47 @@ describe("VentasPage — Anuladas, Todas y Pendientes antiguos no muestran ni us
 
     fireEvent.mouseDown(screen.getByRole("tab", { name: /Ventas Anuladas/ }));
     panel = screen.getByRole("tabpanel");
+    fireEvent.click(within(panel).getByRole("button", { name: "Todo" }));
     fireEvent.click(within(panel).getAllByRole("checkbox")[0]);
     expect(within(panel).getByRole("button", { name: /Imprimir seleccionados \(1\)/ })).toBeEnabled();
 
     fireEvent.change(within(panel).getByLabelText("Desde"), { target: { value: "2026-09-01" } });
     expect(ordersIn(panel)).toEqual(["ORD-301"]);
     expect(within(panel).getByRole("button", { name: /Imprimir seleccionados \(0\)/ })).toBeDisabled();
+  });
+});
+
+describe("VentasPage — un solo período para tarjetas, pestañas y lista", () => {
+  const lastQuery = () => jest.mocked(useBusinessSalesPage).mock.calls.at(-1)?.[1];
+
+  it("los números de las pestañas salen del período, no del historial completo", () => {
+    serverTabs = true;
+    mockKpiPeriod = ["2026-08-01", "2026-08-31"];
+    render(<VentasPage />);
+
+    expect(screen.getByRole("tab", { name: /Pendientes/ })).toHaveTextContent(/Pendientes\s*3$/);
+    expect(screen.getByRole("tab", { name: /Ventas Anuladas/ })).toHaveTextContent(/Ventas Anuladas\s*1$/);
+    expect(screen.getByRole("tab", { name: /Todas las Ventas/ })).toHaveTextContent(/Todas las Ventas\s*4$/);
+    expect(screen.getByRole("button", { name: "Pendientes antiguos (1)" })).toBeInTheDocument();
+    expect(kpiValue("Pendientes")).toBe("3");
+  });
+
+  it("el período elegido en una pestaña vale para las demás y para las tarjetas", async () => {
+    render(<VentasPage />);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Ventas Anuladas/ }));
+    fireEvent.click(within(screen.getByRole("tabpanel")).getByRole("button", { name: "30 días" }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Todas las Ventas/ }));
+
+    expect(within(screen.getByRole("tabpanel")).getByLabelText("Desde")).toHaveValue("2026-08-28");
+    await waitFor(() => expect(lastQuery()).toEqual(expect.objectContaining({ tab: "todas", dateFrom: "2026-08-28", kpiDateFrom: "2026-08-28" })), { timeout: 2000 });
+  });
+
+  it("Pendientes antiguos respeta un Hasta anterior al corte de 30 días", () => {
+    mockKpiPeriod = ["2026-07-01", "2026-07-10"];
+    render(<VentasPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Pendientes antiguos (2)" }));
+
+    expect(lastQuery()).toEqual(expect.objectContaining({ dateFrom: "2026-07-01", dateTo: "2026-07-10", sort: "updated_asc" }));
   });
 });
 
@@ -607,7 +644,7 @@ describe("VentasPage — KPIs por período", () => {
     render(<VentasPage />);
     await waitFor(() => expect(kpiValue("Por cobrar")).toBe("S/ 110.00USD 25.00"));
     expect(kpiValue("Adelantado")).toBe("S/ 0.00USD 0.00");
-    expect(ordersIn(screen.getByRole("tabpanel"))).toEqual(["ORD-101"]);
+    expect(ordersIn(screen.getByRole("tabpanel"))).toEqual([]);
   });
 
   it("mientras cargan, las tarjetas muestran …", () => {
@@ -656,7 +693,8 @@ describe("VentasPage — KPIs por período", () => {
 
     await waitFor(() => expect(kpiValue("Pendientes")).toBe("3"));
     expect(kpiValue("Anuladas")).toBe("1");
-    expect(useBusinessSalesPage).toHaveBeenLastCalledWith(["store-1"], expect.objectContaining({ kpiDateFrom: "2026-08-01", kpiDateTo: "2026-08-31" }));
-    expect(ordersIn(screen.getByRole("tabpanel"))).toEqual(["ORD-101"]);
+    expect(useBusinessSalesPage).toHaveBeenLastCalledWith(["store-1"], expect.objectContaining({ kpiDateFrom: "2026-08-01", kpiDateTo: "2026-08-31", dateFrom: "2026-08-01", dateTo: "2026-08-31" }));
+    // La lista usa el mismo período que las tarjetas: ORD-101 (09-20) queda fuera.
+    expect(ordersIn(screen.getByRole("tabpanel"))).toEqual([]);
   });
 });

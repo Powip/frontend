@@ -78,7 +78,6 @@ import { getBusinessSalesExport, type BusinessSalesOrder, type BusinessSalesQuer
 import {
   daysWithoutMovement,
   isPendienteStatus,
-  ventasRecentFrom,
   ventasAntiguosTo,
 } from "./ventasTabs";
 import { todayInPeru, type DateWindow } from "@/lib/peruDate";
@@ -425,16 +424,14 @@ function VentasContent() {
     useState<SalesFilters>(emptySalesFilters);
   const [filtersAll, setFiltersAll] = useState<SalesFilters>(emptySalesFilters);
 
-  // Rango de fechas para las estadísticas (KPIs), independiente de los
-  // filtros de cada tabla
-  const [kpiDateFrom, setKpiDateFrom] = useState("");
-  const [kpiDateTo, setKpiDateTo] = useState("");
-  // Cada pestaña baja solo su período (FEAT-27). "Hoy" en hora de Perú.
+  // "Hoy" en hora de Perú.
   const [today] = useState(() => todayInPeru());
-  const [anuladasWindow, setAnuladasWindow] = useState<DateWindow>(() => ({ fromDate: ventasRecentFrom(today), toDate: "" }));
-  const [todasWindow, setTodasWindow] = useState<DateWindow>(() => ({ fromDate: ventasRecentFrom(today), toDate: "" }));
-  // Pendientes: los recientes (30 días) o los antiguos, que se bajan solo mientras están elegidos
-  const [pendientesView, setPendientesView] = useState<"recientes" | "antiguos">("recientes");
+  // Un solo período para tarjetas, pestañas, lista y pie: así siempre cuadran.
+  // Vacío = todo el historial.
+  const [period, setPeriod] = useState<DateWindow>({ fromDate: "", toDate: "" });
+  const periodSelectorValue = useMemo(() => ({ from: period.fromDate, to: period.toDate }), [period]);
+  // Pendientes: todos, o solo los antiguos (más de 30 días) ordenados por días sin movimiento
+  const [pendientesView, setPendientesView] = useState<"todos" | "antiguos">("todos");
   // «Por cobrar total» abre Todas con saldo pendiente y sin anuladas; la insignia lo deja quitar
   const [todasExcludeCancelled, setTodasExcludeCancelled] = useState(false);
 
@@ -443,8 +440,12 @@ function VentasContent() {
   const [pagePendientes, setPagePendientes] = useState(1);
   const [pageAnulados, setPageAnulados] = useState(1);
   useEffect(() => { setPagePendientes(1); }, [filtersPendiente, pendientesView]);
-  useEffect(() => { setPageAnulados(1); }, [filtersAnulado, anuladasWindow]);
-  useEffect(() => { setPageAll(1); }, [todasWindow]);
+  useEffect(() => { setPageAnulados(1); }, [filtersAnulado]);
+  useEffect(() => {
+    setPagePendientes(1);
+    setPageAnulados(1);
+    setPageAll(1);
+  }, [period]);
   const ITEMS_PER_PAGE = 10;
 
   // Estado para modal de cancelación
@@ -568,18 +569,17 @@ function VentasContent() {
 
   const { scopeKey, storeIds } = useBusinessScope();
   const activeFilters = activeTab === "pendientes" ? filtersPendiente : activeTab === "anuladas" ? filtersAnulado : filtersAll;
-  const activeWindow = activeTab === "pendientes"
-    ? pendientesView === "recientes" ? { fromDate: ventasRecentFrom(today), toDate: "" } : { fromDate: "", toDate: ventasAntiguosTo(today) }
-    : activeTab === "anuladas" ? anuladasWindow : todasWindow;
-  const fromDates = [activeWindow.fromDate, activeFilters.dateFrom].filter(Boolean).sort();
-  const toDates = [activeWindow.toDate, activeFilters.dateTo].filter(Boolean).sort();
+  const antiguosView = activeTab === "pendientes" && pendientesView === "antiguos";
+  const antiguosTo = ventasAntiguosTo(today);
   const salesQuery: BusinessSalesQuery = {
-    ...activeFilters, dateFrom: fromDates.at(-1) || "", dateTo: toDates[0] || "",
+    ...activeFilters,
+    dateFrom: period.fromDate,
+    dateTo: antiguosView && (!period.toDate || period.toDate > antiguosTo) ? antiguosTo : period.toDate,
     tab: activeTab as BusinessSalesTab,
     page: activeTab === "pendientes" ? pagePendientes : activeTab === "anuladas" ? pageAnulados : pageAll,
     limit: ITEMS_PER_PAGE,
-    sort: activeTab === "pendientes" && pendientesView === "antiguos" ? "updated_asc" : "created_desc",
-    kpiDateFrom, kpiDateTo,
+    sort: antiguosView ? "updated_asc" : "created_desc",
+    kpiDateFrom: period.fromDate, kpiDateTo: period.toDate,
     ...(activeTab === "todas" && todasExcludeCancelled ? { excludeCancelled: "yes" as const } : {}),
     ...(chatFilter.active ? { crmOnly: "yes" as const } : {}),
   };
@@ -590,11 +590,19 @@ function VentasContent() {
   const ordersData = salesPage?.data;
   const queryReady = !!salesPage && !isFetching && !isDebouncing && !salesError;
   const queryState = { loading: isFetching || isDebouncing, error: salesError, retry: () => { void refetchPage(); }, ready: queryReady };
+  // Números de las pestañas: los mismos del período de las tarjetas.
+  // `counts` (historial completo) queda de respaldo si el servidor aún no envía el dato.
+  const tabCounts = {
+    pendientes: salesPage?.kpis?.pendientes ?? salesPage?.counts?.pendientes ?? null,
+    anuladas: salesPage?.kpis?.anuladas ?? salesPage?.counts?.anuladas ?? null,
+    todas: salesPage?.kpis?.todas ?? salesPage?.counts?.todas ?? null,
+    pendientesAntiguos: salesPage?.kpis?.pendientesAntiguos ?? salesPage?.counts?.pendientesAntiguos ?? null,
+  };
   const ventas = {
     ...queryState,
-    antiguos: { ...queryState, count: salesPage?.counts?.pendientesAntiguos ?? null },
+    antiguos: { ...queryState, count: tabCounts.pendientesAntiguos },
     anuladas: queryState,
-    todas: { ...queryState, count: salesPage?.counts?.todas ?? null },
+    todas: { ...queryState, count: tabCounts.todas },
     kpis: queryState,
   };
   const bulkSelectionReady = queryReady;
@@ -2079,21 +2087,22 @@ Estado: ${sale.status}
   const allAnulados = activeTab === "anuladas" ? sales : NO_SALES;
   const allTodas = activeTab === "todas" ? sales : NO_SALES;
 
-  // Recientes y Antiguos comparten la selección de Pendientes: se vacía al cambiar
-  const changePendientesView = (view: "recientes" | "antiguos") => {
+  // Todos y Antiguos comparten la selección de Pendientes: se vacía al cambiar
+  const changePendientesView = (view: "todos" | "antiguos") => {
     if (view === pendientesView) return;
     setPendientesView(view);
     setSelectedPendientesIds(new Set());
   };
-  // Lo mismo al cambiar el período de Anuladas o Todas: se vacía la selección de esa pestaña
-  const changeAnuladasWindow = (period: DateWindow) => {
-    setAnuladasWindow(period);
+  // Lo mismo al cambiar el período: es común, así que se vacían las tres selecciones
+  const changePeriod = useCallback((next: DateWindow) => {
+    setPeriod((current) =>
+      current.fromDate === next.fromDate && current.toDate === next.toDate ? current : next,
+    );
+    setSelectedPendientesIds(new Set());
     setSelectedAnuladosIds(new Set());
-  };
-  const changeTodasWindow = (period: DateWindow) => {
-    setTodasWindow(period);
     setSelectedTodasIds(new Set());
-  };
+  }, []);
+  const periodWindow = { value: period, today, defaultFromDate: "", onChange: changePeriod };
 
   const pendientes = allPendientes;
   const anulados = allAnulados;
@@ -2107,10 +2116,9 @@ Estado: ${sale.status}
     currencyBalances: salesPage?.kpis?.amounts ?? [],
     pendingTotal: salesPage?.kpis?.pendingTotal ?? [],
   };
-  // Clic en «Por cobrar total»: Todas con saldo pendiente, sin anuladas y con el rango de fechas de las tarjetas
+  // Clic en «Por cobrar total»: Todas con saldo pendiente y sin anuladas, con el mismo período
   const showPendingTotalSales = () => {
     setFiltersAll({ ...emptySalesFilters, hasPendingBalance: "yes" });
-    setTodasWindow({ fromDate: kpiDateFrom, toDate: kpiDateTo });
     setTodasExcludeCancelled(true);
     setSelectedTodasIds(new Set());
     setPageAll(1);
@@ -2202,10 +2210,9 @@ Estado: ${sale.status}
               </p>
             </div>
             <PeriodSelector
-              onPeriodChange={(from, to) => {
-                setKpiDateFrom(from);
-                setKpiDateTo(to);
-              }}
+              allowAll
+              value={periodSelectorValue}
+              onPeriodChange={(from, to) => changePeriod({ fromDate: from, toDate: to })}
             />
           </div>
           {!ventas.kpis.loading && ventas.kpis.error && (
@@ -2325,14 +2332,14 @@ Estado: ${sale.status}
               <TabsTrigger value="pendientes">
                 Ventas Pendientes
                 <span className="ml-1.5 rounded-full bg-primary/10 text-primary dark:bg-primary/20 px-1.5 py-0.5 text-[10px] font-bold">
-                  {salesPage?.counts?.pendientes ?? "—"}
+                  {tabCounts.pendientes ?? "—"}
                 </span>
               </TabsTrigger>
               <TabsTrigger value="anuladas">
                 Ventas Anuladas
                 {ventas.anuladas.ready && (
                 <span className="ml-1.5 rounded-full bg-primary/10 text-primary dark:bg-primary/20 px-1.5 py-0.5 text-[10px] font-bold">
-                  {salesPage?.counts?.anuladas ?? "—"}
+                  {tabCounts.anuladas ?? "—"}
                 </span>
                 )}
               </TabsTrigger>
@@ -2416,13 +2423,13 @@ Estado: ${sale.status}
                 <CardContent>
                   <div className="mb-3 flex flex-wrap items-center gap-2">
                     <Button
-                      variant={pendientesView === "recientes" ? "default" : "outline"}
+                      variant={pendientesView === "todos" ? "default" : "outline"}
                       size="sm"
                       className="h-8"
-                      aria-pressed={pendientesView === "recientes"}
-                      onClick={() => changePendientesView("recientes")}
+                      aria-pressed={pendientesView === "todos"}
+                      onClick={() => changePendientesView("todos")}
                     >
-                      Recientes
+                      Todos
                     </Button>
                     <Button
                       variant={pendientesView === "antiguos" ? "default" : "outline"}
@@ -2437,7 +2444,7 @@ Estado: ${sale.status}
                         : "Pendientes antiguos"}
                     </Button>
                     <span className="text-xs text-muted-foreground">
-                      Los pendientes de más de 30 días están en Pendientes antiguos
+                      Pendientes antiguos: más de 30 días, primero los que llevan más tiempo sin movimiento
                     </span>
                   </div>
                   <SalesTableFilters
@@ -2445,6 +2452,7 @@ Estado: ${sale.status}
                     onFiltersChange={setFiltersPendiente}
                     showProductFilter
                     availableProducts={productOptionsPendientes}
+                    dateWindow={periodWindow}
                   />
                   {renderPendientesTable(pendientes, activeTab === "todas", {
                     showDaysWithoutMovement: pendientesView === "antiguos",
@@ -2544,7 +2552,7 @@ Estado: ${sale.status}
                     onFiltersChange={setFiltersAnulado}
                     showProductFilter
                     availableProducts={productOptionsAnulados}
-                    dateWindow={{ value: anuladasWindow, today, defaultFromDate: ventasRecentFrom(today), onChange: changeAnuladasWindow }}
+                    dateWindow={periodWindow}
                   />
                   {renderAnuladosTable(anulados, activeTab === "todas", renderQueryStatus(ventas.anuladas, "Cargando ventas...", "No se pudieron cargar las ventas de este período."))}
                 </CardContent>
@@ -2671,7 +2679,7 @@ Estado: ${sale.status}
                     }}
                     showProductFilter
                     availableProducts={productOptionsAll}
-                    dateWindow={{ value: todasWindow, today, defaultFromDate: ventasRecentFrom(today), onChange: changeTodasWindow }}
+                    dateWindow={periodWindow}
                   />
                   {renderPendientesTable(
                     todasLasVentas,
