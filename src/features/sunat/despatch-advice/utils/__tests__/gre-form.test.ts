@@ -9,6 +9,7 @@ import {
   greFormProblems,
   greFormToRequest,
   greLastErrorText,
+  greRejectionText,
   isGreEligibleOrderStatus,
   isGreEligibleTransferStatus,
   type GreFormState,
@@ -232,5 +233,21 @@ describe("habilitación y mensajes", () => {
     expect(isGreEligibleTransferStatus("borrador")).toBe(true);
     expect(isGreEligibleTransferStatus("en_camino")).toBe(true);
     expect(isGreEligibleTransferStatus("recibido")).toBe(false);
+  });
+});
+
+describe("freno de serie y 1033 de la GRE", () => {
+  const error = (status: number, data: Record<string, unknown>) => ({ response: { status, data } });
+
+  it("GRE_SERIE_FRENADA muestra el mensaje de ms-sunat o uno claro", () => {
+    expect(greErrorMessage(error(409, { code: "GRE_SERIE_FRENADA", message: "La serie T001 está frenada: ..." }))).toBe("La serie T001 está frenada: ...");
+    expect(greErrorMessage(error(409, { code: "GRE_SERIE_FRENADA" }))).toMatch(/serie está frenada.*1033/);
+  });
+
+  it("el 1033 se explica en claro; otros códigos siguen igual", () => {
+    expect(greRejectionText("soap-env:Client.1033", "El comprobante fue registrado previamente")).toMatch(/ya existe en SUNAT.*frenada/);
+    expect(greRejectionText(null, "1033 - El comprobante fue informado anteriormente")).toMatch(/^Código 1033: ese número de guía ya existe/);
+    expect(greRejectionText("2335", "Otro motivo")).toBe("Código 2335: Otro motivo");
+    expect(greRejectionText(null, null)).toBe("Código —: sin descripción");
   });
 });

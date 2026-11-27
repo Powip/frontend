@@ -128,6 +128,21 @@ export interface GreProfileSettings {
   series: string | null;
   nextCorrelative: number | null;
   updatedAt: string | null;
+  /**
+   * No nulo cuando la serie está frenada: SUNAT respondió 1033 (número ya
+   * usado fuera de Powip). No se numera ni envía ninguna guía de la serie hasta
+   * volver a guardar las credenciales con otra serie o el próximo número libre.
+   * Opcional para tolerar un ms-sunat anterior al freno.
+   */
+  seriesBrake?: GreSeriesBrake | null;
+}
+
+export interface GreSeriesBrake {
+  series: string;
+  correlative: number;
+  sunatCode: string;
+  sunatDescription: string | null;
+  blockedAt: string;
 }
 
 export interface GreSettings {
@@ -153,7 +168,8 @@ export interface UpsertGreCredentialRequest {
   clientId: string;
   clientSecret: string;
   series?: string;
-  nextCorrelative?: number;
+  /** Obligatorio: el primer número libre de la serie en SUNAT. Guardarlo libera el freno. */
+  nextCorrelative: number;
 }
 
 export interface GreCredential {

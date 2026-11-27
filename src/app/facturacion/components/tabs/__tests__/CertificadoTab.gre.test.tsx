@@ -5,12 +5,21 @@
  * 2. Configurar: valida client_id, client_secret y serie (T + 3) y guarda contra ms-sunat.
  * 3. Actualizar: el secreto se vuelve a escribir y el próximo número no retrocede (también el 409).
  * 4. Aviso de modo de pruebas mientras ms-sunat no envía a SUNAT.
+ * 5. El próximo número es obligatorio y siempre se envía (libera el freno).
+ * 6. Serie frenada por 1033: aviso en el RUC.
+ * 7. Freno de duplicados (Consulta Integrada): lo ven todos los que entran a Facturación.
  */
 
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CertificadoTab } from "@/app/facturacion/components/tabs/CertificadoTab";
+import {
+  deleteCpeValidationCredentialApi,
+  getCpeValidationAccessApi,
+  getCpeValidationCredentialApi,
+  upsertCpeValidationCredentialApi,
+} from "@/features/sunat/cpe-validation/cpe-validation.api";
 import { getGreSettingsApi, upsertGreCredentialApi } from "@/features/sunat/despatch-advice/api/despatch-advice.api";
 import type { GreSettings } from "@/features/sunat/despatch-advice/types/despatch-advice.types";
 import { useDeleteSunatProfile } from "@/features/sunat/sunat-profile/hooks/use-delete-sunat-profile";
@@ -31,6 +40,13 @@ jest.mock("@/app/facturacion/components/modals/CertificadoUploadModal", () => ({
 jest.mock("@/features/sunat/despatch-advice/api/despatch-advice.api", () => ({
   getGreSettingsApi: jest.fn(),
   upsertGreCredentialApi: jest.fn(),
+}));
+jest.mock("@/features/sunat/cpe-validation/cpe-validation.api", () => ({
+  ...jest.requireActual("@/features/sunat/cpe-validation/cpe-validation.api"),
+  getCpeValidationAccessApi: jest.fn(),
+  getCpeValidationCredentialApi: jest.fn(),
+  upsertCpeValidationCredentialApi: jest.fn(),
+  deleteCpeValidationCredentialApi: jest.fn(),
 }));
 
 function profile(id: string, ruc: string, razonSocial: string, isDefault: boolean): SunatProfile {
@@ -111,6 +127,8 @@ beforeEach(() => {
   (useDeleteSunatProfile as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
   (useReplaceSunatProfileCertificate as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
   jest.mocked(getGreSettingsApi).mockResolvedValue(SETTINGS);
+  jest.mocked(getCpeValidationAccessApi).mockResolvedValue({ serviceConfigured: true });
+  jest.mocked(getCpeValidationCredentialApi).mockResolvedValue(null);
   jest.mocked(upsertGreCredentialApi).mockResolvedValue({
     sunatProfileId: "p2",
     clientId: "client-beta",
@@ -155,8 +173,15 @@ describe("CertificadoTab: credenciales GRE", () => {
     await user.clear(within(dialog).getByLabelText("Serie"));
     await user.type(within(dialog).getByLabelText("Serie"), "t002");
     await user.click(within(dialog).getByRole("button", { name: "Guardar credenciales" }));
+    expect(within(dialog).getByText(/Escribe el próximo número libre/)).toBeInTheDocument();
+    expect(upsertGreCredentialApi).not.toHaveBeenCalled();
 
-    await waitFor(() => expect(upsertGreCredentialApi).toHaveBeenCalledWith("p2", { clientId: "client-beta", clientSecret: "s3cr3t", series: "T002" }));
+    await user.type(within(dialog).getByLabelText("Próximo número"), "1");
+    await user.click(within(dialog).getByRole("button", { name: "Guardar credenciales" }));
+
+    await waitFor(() =>
+      expect(upsertGreCredentialApi).toHaveBeenCalledWith("p2", { clientId: "client-beta", clientSecret: "s3cr3t", series: "T002", nextCorrelative: 1 }),
+    );
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
@@ -169,21 +194,92 @@ describe("CertificadoTab: credenciales GRE", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByLabelText("client_id")).toHaveValue("client-acme");
     expect(within(dialog).getByLabelText("client_secret")).toHaveValue("");
-    await user.clear(within(dialog).getByLabelText("Próximo número (opcional)"));
-    await user.type(within(dialog).getByLabelText("Próximo número (opcional)"), "3");
+    await user.clear(within(dialog).getByLabelText("Próximo número"));
+    await user.type(within(dialog).getByLabelText("Próximo número"), "3");
     await user.click(within(dialog).getByRole("button", { name: "Guardar credenciales" }));
     expect(within(dialog).getByText(/Vuelve a escribir el client_secret/)).toBeInTheDocument();
     expect(within(dialog).getByText("No puede ser menor que 9: esos números ya se usaron.")).toBeInTheDocument();
 
     await user.type(within(dialog).getByLabelText("client_secret"), "nuevo");
-    await user.clear(within(dialog).getByLabelText("Próximo número (opcional)"));
-    await user.type(within(dialog).getByLabelText("Próximo número (opcional)"), "12");
+    await user.clear(within(dialog).getByLabelText("Próximo número"));
+    await user.type(within(dialog).getByLabelText("Próximo número"), "12");
     await user.click(within(dialog).getByRole("button", { name: "Guardar credenciales" }));
 
     await waitFor(() =>
       expect(upsertGreCredentialApi).toHaveBeenCalledWith("p1", { clientId: "client-acme", clientSecret: "nuevo", series: "T001", nextCorrelative: 12 }),
     );
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("Ese número ya se usó en la serie");
+  });
+
+  it("al actualizar sin tocar el número lo envía igual (confirma el número y libera el freno)", async () => {
+    const user = setup();
+    const acme = await greBlock("20111111111");
+    await user.click(await within(acme).findByRole("button", { name: "Actualizar credenciales GRE" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText("Próximo número")).toHaveValue("9");
+    await user.type(within(dialog).getByLabelText("client_secret"), "nuevo");
+    await user.click(within(dialog).getByRole("button", { name: "Guardar credenciales" }));
+    await waitFor(() =>
+      expect(upsertGreCredentialApi).toHaveBeenCalledWith("p1", { clientId: "client-acme", clientSecret: "nuevo", series: "T001", nextCorrelative: 9 }),
+    );
+  });
+
+  it("serie frenada por 1033: avisa en el RUC qué hacer", async () => {
+    jest.mocked(getGreSettingsApi).mockResolvedValue({
+      ...SETTINGS,
+      profiles: [
+        {
+          ...SETTINGS.profiles[0],
+          seriesBrake: { series: "T001", correlative: 9, sunatCode: "1033", sunatDescription: "registrado previamente", blockedAt: "2026-11-27T10:00:00Z" },
+        },
+        SETTINGS.profiles[1],
+      ],
+    });
+    setup();
+    const brake = await screen.findByTestId("gre-series-brake-20111111111");
+    expect(brake).toHaveTextContent("Serie T001 frenada.");
+    expect(brake).toHaveTextContent("SUNAT respondió 1033 a la guía T001-9");
+    expect(screen.queryByTestId("gre-series-brake-20222222222")).not.toBeInTheDocument();
+  });
+
+  it("todos los usuarios de Facturación ven el freno de duplicados en cada RUC", async () => {
+    setup();
+    const acme = await screen.findByTestId("cpe-validation-20111111111");
+    await waitFor(() => expect(acme).toHaveTextContent("sin credenciales"));
+    expect(await screen.findByTestId("cpe-validation-20222222222")).toBeInTheDocument();
+    expect(within(acme).queryByTestId("cpe-validation-service-off")).not.toBeInTheDocument();
+    expect(jest.mocked(getCpeValidationCredentialApi).mock.calls.map(([id]) => id)).toEqual(expect.arrayContaining(["p1", "p2"]));
+  });
+
+  it("configura y quita las credenciales de la Consulta Integrada", async () => {
+    jest.mocked(getCpeValidationAccessApi).mockResolvedValue({ serviceConfigured: false });
+    jest.mocked(getCpeValidationCredentialApi).mockImplementation(async (id: string) =>
+      id === "p1" ? { sunatProfileId: "p1", clientId: "cpe-acme", hasClientSecret: true, updatedAt: "2026-11-27T10:00:00Z" } : null,
+    );
+    jest.mocked(upsertCpeValidationCredentialApi).mockResolvedValue({ sunatProfileId: "p2", clientId: "cpe-beta", hasClientSecret: true, updatedAt: "2026-11-27T10:00:00Z" });
+    jest.mocked(deleteCpeValidationCredentialApi).mockResolvedValue();
+    const user = setup();
+
+    const acme = await screen.findByTestId("cpe-validation-20111111111");
+    await waitFor(() => expect(acme).toHaveTextContent("activo"));
+    expect(acme).toHaveTextContent("client_id cpe-acme");
+    expect(within(acme).getByTestId("cpe-validation-service-off")).toBeInTheDocument();
+
+    const beta = await screen.findByTestId("cpe-validation-20222222222");
+    await waitFor(() => expect(beta).toHaveTextContent("sin credenciales"));
+    await user.click(within(beta).getByRole("button", { name: "Configurar credenciales" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Guardar credenciales" }));
+    expect(within(dialog).getByText(/Escribe el Id/)).toBeInTheDocument();
+    expect(upsertCpeValidationCredentialApi).not.toHaveBeenCalled();
+    await user.type(within(dialog).getByLabelText("client_id"), " cpe-beta ");
+    await user.type(within(dialog).getByLabelText("client_secret"), "clave");
+    await user.click(within(dialog).getByRole("button", { name: "Guardar credenciales" }));
+    await waitFor(() => expect(upsertCpeValidationCredentialApi).toHaveBeenCalledWith("p2", { clientId: "cpe-beta", clientSecret: "clave" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    await user.click(within(acme).getByRole("button", { name: "Quitar" }));
+    await waitFor(() => expect(deleteCpeValidationCredentialApi).toHaveBeenCalledWith("p1"));
   });
 
   it("mientras ms-sunat no envía a SUNAT muestra el aviso de modo de pruebas", async () => {
