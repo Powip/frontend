@@ -51,6 +51,11 @@ export function canRepay(
   );
 }
 
+/** Dado de baja pero aún dentro del período pagado: sigue activo hasta activeUntil y no se renueva. */
+export function isPaidNotRenewing(purchase: ExtraRucPurchase, today = todayIso()): boolean {
+  return !purchase.renewing && !isExpired(purchase, today);
+}
+
 interface ExtraRucSlotsCardProps {
   /** Abre el pago de un cupo nuevo para ese RUC (AddIssuerFlow). */
   onRepay?: (purchase: ExtraRucPurchase) => void;
@@ -82,6 +87,8 @@ export function ExtraRucSlotsCard({ onRepay }: ExtraRucSlotsCardProps = {}) {
     return null;
   }
 
+  const notRenewing = paid.filter((purchase) => isPaidNotRenewing(purchase)).length;
+
   return (
     <Card>
       <CardHeader>
@@ -92,8 +99,12 @@ export function ExtraRucSlotsCard({ onRepay }: ExtraRucSlotsCardProps = {}) {
         <p className="text-sm text-muted-foreground">
           1 RUC está incluido en tu plan. Cada RUC extra cuesta S/{" "}
           {formatSoles(summary.pricePerRuc)}
-          /mes. Ahora pagas <b>S/ {formatSoles(summary.monthlyExtraTotal)}/mes</b> por{" "}
-          {summary.renewingRucs} RUC extra.
+          /mes. Tienes <b>{summary.extraRucsPaid}</b> RUC extra pagado
+          {summary.extraRucsPaid === 1 ? "" : "s"} y vigente{summary.extraRucsPaid === 1 ? "" : "s"}
+          . Se cobra cada mes: <b>S/ {formatSoles(summary.monthlyExtraTotal)}/mes</b> (
+          {summary.renewingRucs} RUC).
+          {notRenewing > 0 &&
+            ` ${notRenewing} no se renueva${notRenewing === 1 ? "" : "n"}: sigue${notRenewing === 1 ? "" : "n"} activo${notRenewing === 1 ? "" : "s"} hasta la fecha que se indica.`}
         </p>
       </CardHeader>
 
@@ -106,8 +117,12 @@ export function ExtraRucSlotsCard({ onRepay }: ExtraRucSlotsCardProps = {}) {
             <div>
               <div className="font-semibold">{purchase.razonSocial}</div>
               <div className="text-xs text-muted-foreground">
-                RUC {purchase.ruc} · {isExpired(purchase) ? "venció el" : "pagado hasta"}{" "}
-                {formatDay(purchase.activeUntil)}
+                RUC {purchase.ruc} ·{" "}
+                {isExpired(purchase)
+                  ? `venció el ${formatDay(purchase.activeUntil)}`
+                  : purchase.renewing
+                    ? `pagado hasta ${formatDay(purchase.activeUntil)}`
+                    : `activo hasta ${formatDay(purchase.activeUntil)} · no se renueva`}
               </div>
             </div>
 
@@ -117,12 +132,12 @@ export function ExtraRucSlotsCard({ onRepay }: ExtraRucSlotsCardProps = {}) {
               ) : purchase.renewing ? (
                 <Badge variant="secondary">Se renueva cada mes</Badge>
               ) : (
-                <Badge variant="outline">Dado de baja</Badge>
+                <Badge variant="outline">No se renueva</Badge>
               )}
 
               {onRepay && canRepay(purchase, paid) && (
                 <Button size="sm" onClick={() => onRepay(purchase)}>
-                  Volver a pagar
+                  {isPaidNotRenewing(purchase) ? "Renovar" : "Volver a pagar"}
                 </Button>
               )}
 

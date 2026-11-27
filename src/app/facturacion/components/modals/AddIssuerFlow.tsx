@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AddIssuerModal,
@@ -42,7 +42,7 @@ interface AddIssuerFlowProps {
    * Cupo dado de baja o vencido que se quiere volver a pagar: el modal sale con sus datos ya cargados y, al
    * confirmar, siempre se paga (no se usa un cupo libre: el cupo es de ese RUC).
    */
-  repay?: AddIssuerValues;
+  repay?: AddIssuerValues & { paidUntil?: string | null };
 }
 
 /**
@@ -65,13 +65,25 @@ export function AddIssuerFlow({
   const activateProfile = useActivateSunatProfile();
   const [step, setStep] = useState<Step>("form");
   const [identity, setIdentity] = useState<AddIssuerValues | undefined>(undefined);
+  const handledReturn = useRef<string | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const activateRef = useRef(activateProfile.mutate);
+  activateRef.current = activateProfile.mutate;
+
+  // Al volver de la pasarela por un RUC que ya está conectado (reactivar o renovar) no se pide otra vez el
+  // certificado: si está apagado se activa con el cupo recién pagado; si ya está activo, solo se avisa.
+  const returningProfile = paidIdentity
+    ? profiles.find((profile) => profile.ruc === paidIdentity.ruc)
+    : undefined;
 
   useEffect(() => {
     if (!isOpen) {
+      handledReturn.current = null;
       return;
     }
 
-    if (paidIdentity) {
+    if (paidIdentity && !returningProfile) {
       setIdentity(paidIdentity);
       setStep("certificate");
       return;
@@ -79,7 +91,31 @@ export function AddIssuerFlow({
 
     setIdentity(undefined);
     setStep("form");
-  }, [isOpen, paidIdentity]);
+  }, [isOpen, paidIdentity, returningProfile]);
+
+  useEffect(() => {
+    if (!isOpen || !paidIdentity || !returningProfile) {
+      return;
+    }
+    if (handledReturn.current === paidIdentity.ruc) {
+      return;
+    }
+    handledReturn.current = paidIdentity.ruc;
+
+    if (returningProfile.isActive) {
+      toast.success("Pago recibido. El RUC sigue activo.");
+      onCloseRef.current();
+      return;
+    }
+
+    activateRef.current(returningProfile.id, {
+      onSuccess: () => onCloseRef.current(),
+      onError: () => {
+        toast.info("Tu pago se está confirmando. Activa el RUC desde Emisores en un momento.");
+        onCloseRef.current();
+      },
+    });
+  }, [isOpen, paidIdentity, returningProfile]);
 
   const freeSlot = hasFreeRucSlot(summary, profiles);
   const pricePerRuc = summary?.pricePerRuc ?? DEFAULT_EXTRA_RUC_PRICE;
@@ -132,7 +168,7 @@ export function AddIssuerFlow({
   return (
     <>
       <AddIssuerModal
-        isOpen={isOpen && step === "form"}
+        isOpen={isOpen && step === "form" && !(paidIdentity && returningProfile)}
         onClose={onClose}
         onConfirm={handleConfirm}
         pricePerRuc={pricePerRuc}
@@ -141,6 +177,7 @@ export function AddIssuerFlow({
         existingRucs={profiles.map((profile) => profile.ruc)}
         isSubmitting={buyExtraRuc.isPending || activateProfile.isPending}
         initialValues={repay ?? reactivate}
+        paidUntil={repay?.paidUntil ?? null}
       />
 
       <CertificadoUploadModal

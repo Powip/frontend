@@ -140,6 +140,59 @@ describe("AddIssuerFlow", () => {
     expect(screen.queryByText("Agregar RUC emisor")).not.toBeInTheDocument();
   });
 
+  it("al volver de pagar un RUC ya conectado y apagado lo activa sin pedir certificado", () => {
+    givenSummary(summary({ maxRucs: 2, extraRucsPaid: 1 }));
+    const onClose = jest.fn();
+    activateMutate.mockImplementation((_id: string, opts: { onSuccess: () => void }) =>
+      opts.onSuccess(),
+    );
+    render(
+      <AddIssuerFlow
+        isOpen
+        onClose={onClose}
+        profiles={[profile("a", "20111111111", true), profile("b", "20222222222", false)]}
+        paidIdentity={{ ruc: "20222222222", razonSocial: "EMPRESA b" }}
+      />,
+    );
+
+    expect(activateMutate).toHaveBeenCalledTimes(1);
+    expect(activateMutate.mock.calls[0][0]).toBe("b");
+    expect(onClose).toHaveBeenCalled();
+    expect(screen.queryByText(/Subir certificado/)).not.toBeInTheDocument();
+  });
+
+  it("al volver de renovar un RUC que sigue activo solo avisa y no lo activa de nuevo", () => {
+    givenSummary(summary({ maxRucs: 2, extraRucsPaid: 1 }));
+    const onClose = jest.fn();
+    render(
+      <AddIssuerFlow
+        isOpen
+        onClose={onClose}
+        profiles={[profile("a", "20111111111", true), profile("b", "20222222222", true)]}
+        paidIdentity={{ ruc: "20222222222", razonSocial: "EMPRESA b" }}
+      />,
+    );
+
+    expect(activateMutate).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalled();
+    expect(screen.queryByText(/Subir certificado/)).not.toBeInTheDocument();
+  });
+
+  it("renovar un cupo aún pagado avisa que el pago cubre el mes siguiente", () => {
+    givenSummary(summary({ maxRucs: 2, extraRucsPaid: 1 }));
+    render(
+      <AddIssuerFlow
+        isOpen
+        onClose={jest.fn()}
+        profiles={[profile("a", "20111111111", true), profile("b", "20222222222", true)]}
+        repay={{ ruc: "20222222222", razonSocial: "EMPRESA b", paidUntil: "2026-12-26" }}
+      />,
+    );
+
+    expect(screen.getByText(/ya está pagado hasta el/)).toBeInTheDocument();
+    expect(screen.getByText("26/12/2026")).toBeInTheDocument();
+  });
+
   it("para reactivar un RUC desactivado sin cupo muestra sus datos y paga el cupo", async () => {
     givenSummary(summary({ maxRucs: 1 }));
     buyMutate.mockImplementation(() => undefined);

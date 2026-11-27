@@ -25,6 +25,12 @@ export interface AddIssuerValues {
   razonSocial: string;
 }
 
+function formatIsoDay(value: string): string {
+  const [year, month, day] = value.split("-");
+
+  return `${day}/${month}/${year}`;
+}
+
 interface AddIssuerModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -44,6 +50,8 @@ interface AddIssuerModalProps {
   isSubmitting?: boolean;
   /** Para activar un RUC que ya existe: se cargan sus datos y no se pueden cambiar. */
   initialValues?: AddIssuerValues;
+  /** Renovar un cupo dado de baja que aún está pagado (yyyy-MM-dd): el mes nuevo empieza ese día. */
+  paidUntil?: string | null;
 }
 
 /**
@@ -61,6 +69,7 @@ export function AddIssuerModal({
   existingRucs,
   isSubmitting = false,
   initialValues,
+  paidUntil = null,
 }: AddIssuerModalProps) {
   const [ruc, setRuc] = useState("");
   const [razonSocial, setRazonSocial] = useState("");
@@ -102,12 +111,20 @@ export function AddIssuerModal({
   }
 
   const paysExisting = locked && requiresPayment !== false;
-  const title = paysExisting ? "Pagar cupo del RUC" : locked ? "Activar RUC emisor" : "Agregar RUC emisor";
-  const description = paysExisting
-    ? "Paga el cupo mensual de este RUC para volver a emitir con él."
-    : locked
-      ? "Vuelve a activar este RUC para emitir con él."
-      : "Conecta otra razón social para emitir los pedidos de tus tiendas. Después sube su certificado digital.";
+  const title = paidUntil
+    ? "Renovar cupo del RUC"
+    : paysExisting
+      ? "Pagar cupo del RUC"
+      : locked
+        ? "Activar RUC emisor"
+        : "Agregar RUC emisor";
+  const description = paidUntil
+    ? "Este RUC sigue activo. Renueva su cupo para que no se apague al terminar el mes pagado."
+    : paysExisting
+      ? "Paga el cupo mensual de este RUC para volver a emitir con él."
+      : locked
+        ? "Vuelve a activar este RUC para emitir con él."
+        : "Conecta otra razón social para emitir los pedidos de tus tiendas. Después sube su certificado digital.";
   const confirmLabel = paysExisting
     ? `Pagar cupo (+S/ ${price}/mes)`
     : locked
@@ -178,10 +195,20 @@ export function AddIssuerModal({
                 {requiresPayment
                   ? ` Con él pasarías a pagar S/ ${formatSoles(afterCount * pricePerRuc)}/mes por RUC adicionales (${afterCount} adicional${afterCount === 1 ? "" : "es"}). `
                   : " "}
-                Se paga <b>por adelantado</b>: al continuar vas a la pasarela de pago y, cuando se
-                confirma, ya puedes subir su certificado y usarlo.
+                Se paga <b>por adelantado</b>: al continuar vas a la pasarela de pago
+                {paidUntil
+                  ? "."
+                  : " y, cuando se confirma, ya puedes subir su certificado y usarlo."}
               </p>
             </div>
+          )}
+
+          {paidUntil && (
+            <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
+              Este RUC ya está pagado hasta el <b>{formatIsoDay(paidUntil)}</b>. No se cobra dos
+              veces: este pago cubre el mes siguiente, desde esa fecha, y vuelve a renovarse cada
+              mes.
+            </p>
           )}
 
           {requiresPayment === false && (

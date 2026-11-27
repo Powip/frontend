@@ -114,11 +114,23 @@ describe("ExtraRucSlotsCard", () => {
     expect(screen.queryByRole("button", { name: "Volver a pagar" })).not.toBeInTheDocument();
   });
 
-  it("un cupo dado de baja muestra Volver a pagar", () => {
+  it("un cupo dado de baja aún pagado dice hasta cuándo sigue activo, que no se renueva y ofrece Renovar", () => {
     givenPurchases([purchase({ activeUntil: "2999-12-31", renewing: false })]);
     render(<ExtraRucSlotsCard onRepay={jest.fn()} />);
 
-    expect(screen.getByText("Dado de baja")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Volver a pagar" })).toBeInTheDocument();
+    expect(screen.getByText("No se renueva")).toBeInTheDocument();
+    expect(
+      screen.getByText("activo hasta 31/12/2999 · no se renueva", { exact: false }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Renovar" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Volver a pagar" })).not.toBeInTheDocument();
+  });
+
+  it("el total cuenta el RUC pagado y vigente aunque ya no se renueve", () => {
+    givenPurchases([purchase({ activeUntil: "2999-12-31", renewing: false })]);
+    render(<ExtraRucSlotsCard onRepay={jest.fn()} />);
+
+    expect(screen.getByText(/Tienes/).textContent).toMatch(/Tienes 1 RUC extra pagado y vigente/);
+    expect(screen.getByText(/Tienes/).textContent).toMatch(/1 no se renueva/);
   });
 });

@@ -33,6 +33,7 @@ import { getDefaultIssuer } from "@/features/sunat/sunat-profile/utils/issuers";
 import { useFacturacionMock } from "@/hooks/useFacturacionMock";
 import { useTaxDocuments } from "@/hooks/useTaxDocuments";
 import { cn } from "@/lib/utils";
+import { isPaidNotRenewing } from "./components/ExtraRucSlotsCard";
 import { TaxDocumentsTab } from "./components/tabs/TaxDocumentsTab";
 
 export default function FacturacionPage() {
@@ -58,7 +59,9 @@ export default function FacturacionPage() {
   const [reactivate, setReactivate] = useState<
     { ruc: string; razonSocial: string; profileId: string } | undefined
   >();
-  const [repay, setRepay] = useState<{ ruc: string; razonSocial: string } | undefined>();
+  const [repay, setRepay] = useState<
+    { ruc: string; razonSocial: string; paidUntil?: string | null } | undefined
+  >();
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -94,7 +97,12 @@ export default function FacturacionPage() {
   const openRepay = (purchase: ExtraRucPurchase) => {
     setPaidIdentity(undefined);
     setReactivate(undefined);
-    setRepay({ ruc: purchase.ruc, razonSocial: purchase.razonSocial });
+    // Si sigue pagado (dado de baja, aún vigente), el mes nuevo empieza al vencer: se avisa en el modal.
+    setRepay({
+      ruc: purchase.ruc,
+      razonSocial: purchase.razonSocial,
+      paidUntil: isPaidNotRenewing(purchase) ? purchase.activeUntil : null,
+    });
     setAddIssuerOpen(true);
   };
 
@@ -399,7 +407,8 @@ export default function FacturacionPage() {
       </Tabs>
 
       <AddIssuerFlow
-        isOpen={addIssuerOpen}
+        // Al volver de la pasarela se espera a tener los RUC: si el pagado ya existe se activa, no se pide certificado.
+        isOpen={addIssuerOpen && !(paidIdentity && profilesLoading)}
         onClose={() => setAddIssuerOpen(false)}
         profiles={sunatProfiles}
         paidIdentity={paidIdentity}
