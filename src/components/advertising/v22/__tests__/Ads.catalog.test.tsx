@@ -36,6 +36,7 @@ let mockCount = 101;
 let mockPartial = false;
 let mockRateLimited = false;
 let mockCanManage: boolean | undefined = false;
+let mockCanSync = false;
 let mockMultipleAccounts = false;
 let mockRowChanges: Partial<AdsRow> = {};
 let mockStoreId = "all";
@@ -231,6 +232,7 @@ beforeEach(() => {
   mockPartial = false;
   mockRateLimited = false;
   mockCanManage = false;
+  mockCanSync = false;
   mockMultipleAccounts = false;
   mockSettings.capabilities.edit = false;
   mockRowChanges = {};
@@ -267,7 +269,7 @@ beforeEach(() => {
                 coverage: { lastErrorCode: mockRateLimited ? "PROVIDER_RATE" : null },
               },
             ],
-            capabilities: { canManageAds: mockCanManage },
+            capabilities: { canManageAds: mockCanManage, canSync: mockCanSync },
             pagination: { page, pageSize: 100, total: mockCount, hasMore: page * 100 < mockCount },
           },
         };
@@ -739,6 +741,24 @@ it("explains the recorded Meta rate limit while keeping the saved catalog visibl
   );
   expect(screen.getByText("Anuncio 001")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Actualizar Meta" })).toBeDisabled();
+});
+
+it("asks Meta for the visible period's exact reach and frequency when refreshing", async () => {
+  mockCount = 1;
+  mockCanSync = true;
+  mockSource = mockNumbers();
+  (axios.request as jest.Mock).mockResolvedValue({ data: { runs: [], jobs: [] } });
+  mount();
+  await screen.findByText("Mostrando 1–1 de 1", {}, { timeout: 5000 });
+  fireEvent.click(screen.getByRole("button", { name: "Actualizar Meta" }));
+  await waitFor(() => expect(axios.request).toHaveBeenCalled());
+  expect(axios.request).toHaveBeenCalledWith(
+    expect.objectContaining({
+      method: "post",
+      url: expect.stringMatching(/\/meta\/v22\/module-sync$/),
+      data: { from: "2026-10-01", to: "2026-10-16" },
+    }),
+  );
 });
 
 it("loads hourly comparison only after opening it, without delaying the catalog", async () => {

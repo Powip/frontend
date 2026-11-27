@@ -21,7 +21,10 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { ProgressBar } from "@/components/panel-control/charts/ProgressBar";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
+import { METAS_INDICADORES_ESPECIFICACION } from "@/features/panel-control/shared/config/panel-goals.defaults";
+import type { MetaIndicador, SemaforoEstado } from "@/features/panel-control/shared/models/goal.model";
 import { calcularDelta } from "@/features/panel-control/shared/utils/delta";
+import { evaluarSemaforo } from "@/features/panel-control/shared/utils/semaforo";
 import { BloqueGastoAgrupado } from "../_components/bloque-gasto-agrupado";
 import { type Nivel, NivelPill } from "../_components/nivel";
 import {
@@ -170,9 +173,14 @@ interface Indicador {
   id: string;
   nombre: string;
   valor: string;
+  /** Dato que acompaña al valor, en chico (por ejemplo «· 9,0 % del ticket»). */
+  valorExtra?: string;
   nivel: Nivel;
+  /** Etiqueta de la píldora cuando no es la de siempre del nivel. */
+  etiquetaNivel?: string;
   umbral: string;
   ayuda: string;
+  enlace?: { href: string; texto: string };
 }
 
 const ETIQUETA_NIVEL: Record<Nivel, string> = {
@@ -183,31 +191,97 @@ const ETIQUETA_NIVEL: Record<Nivel, string> = {
   "sin-datos": "Sin datos",
 };
 
-/** Umbrales de siempre de la pantalla (doc técnica §7.7). */
-function nivelCostoPorVenta(valor: number | null): Nivel {
-  if (valor === null) return "sin-datos";
-  return valor < 18 ? "verde" : valor <= 22 ? "ambar" : "rojo";
+/** Número con coma decimal y sin ceros de sobra (3,2 · 4 · 22,5), como en los textos de umbral. */
+const numeroEs = (n: number) => String(Number(n.toFixed(2))).replace(".", ",");
+
+/** Costo de publicidad por venta como parte del ticket promedio (FEAT-34 punto 5): verde < 11 %, ámbar ≤ 14 %. */
+const COSTO_VENTA_VERDE = 0.11;
+const COSTO_VENTA_AMBAR = 0.14;
+
+/**
+ * Costo de publicidad por venta ÷ ticket promedio (0..1); null si falta alguno o es 0. Va redondeada a 1 decimal en %
+ * (la precisión con que se muestra): el nivel y el texto salen del mismo valor y el ruido de coma flotante de dividir
+ * dos cocientes no empuja un 11 % exacto a verde ni un 14 % exacto a rojo.
+ */
+function parteDelTicket(costoPorVenta: number | null, ticket: number | null): number | null {
+  if (costoPorVenta === null || ticket === null) return null;
+  if (!(costoPorVenta > 0) || !(ticket > 0)) return null;
+  return Math.round((costoPorVenta / ticket) * 1000) / 1000;
 }
+
+function nivelCostoPorVenta(parte: number | null): Nivel {
+  if (parte === null) return "sin-datos";
+  return parte < COSTO_VENTA_VERDE ? "verde" : parte <= COSTO_VENTA_AMBAR ? "ambar" : "rojo";
+}
+
+/** La misma meta de retorno que el Panel de control (`retorno_publicidad`), con sus valores por defecto. */
+const META_RETORNO = METAS_INDICADORES_ESPECIFICACION.retorno_publicidad;
+
+const NIVEL_DE_SEMAFORO: Record<SemaforoEstado, Nivel> = {
+  cumple: "verde",
+  cerca: "ambar",
+  bajo: "rojo",
+  sin_datos: "sin-datos",
+};
 
 function nivelRetorno(valor: number | null): Nivel {
-  if (valor === null) return "sin-datos";
-  return valor > 4 ? "verde" : valor >= 3 ? "ambar" : "rojo";
+  return NIVEL_DE_SEMAFORO[evaluarSemaforo(valor, META_RETORNO)];
 }
 
-function nivelMargen(valor: number | null): Nivel {
-  if (valor === null) return "sin-datos";
-  return valor > 0.28 ? "verde" : valor >= 0.2 ? "ambar" : "rojo";
+function umbralRetorno(meta: MetaIndicador): string {
+  const minimo = meta.valor * (1 - meta.tolerancia);
+  return `Verde ≥ ${numeroEs(meta.valor)}x · ámbar ${numeroEs(minimo)}–${numeroEs(meta.valor)}x · rojo < ${numeroEs(minimo)}x`;
 }
 
-function indicadoresCod(r: Resultados): Indicador[] {
+/** Puntos porcentuales por debajo de la meta de margen donde todavía es ámbar. */
+const MARGEN_TOLERANCIA_PP = 8;
+/** Margen de referencia cuando la empresa no cargó su meta (los umbrales de siempre de la pantalla). */
+const MARGEN_REF_VERDE = 0.28;
+const MARGEN_REF_AMBAR = 0.2;
+/** Holgura para comparar porcentajes calculados con coma flotante. */
+const EPS_PCT = 1e-9;
+
+/**
+ * Margen operativo (fracción 0..1) contra la meta de margen de la empresa (`objetivoPct`, en %): verde si la alcanza,
+ * ámbar a menos de 8 puntos, rojo más abajo. Sin meta cargada, la referencia general de siempre (28 % / 20 %).
+ */
+function nivelMargen(valor: number | null, objetivoPct: number | null): Nivel {
+  if (valor === null) return "sin-datos";
+  if (objetivoPct === null) {
+    return valor > MARGEN_REF_VERDE ? "verde" : valor >= MARGEN_REF_AMBAR ? "ambar" : "rojo";
+  }
+  const pct = valor * 100;
+  if (pct >= objetivoPct - EPS_PCT) return "verde";
+  return pct >= objetivoPct - MARGEN_TOLERANCIA_PP - EPS_PCT ? "ambar" : "rojo";
+}
+
+function umbralMargen(objetivoPct: number | null): string {
+  if (objetivoPct === null) return "Referencia general (28 % / 20 %) · carga tu meta de margen";
+  const minimo = numeroEs(objetivoPct - MARGEN_TOLERANCIA_PP);
+  return `Verde ≥ ${numeroEs(objetivoPct)}% · ámbar ${minimo}–${numeroEs(objetivoPct)}% · rojo < ${minimo}%`;
+}
+
+/** Al menos el 10 % de las ventas con costo tienen un costo igual o mayor que el precio (el aviso de `AvisoCostos`). */
+function hayCostosDudosos(r: Resultados): boolean {
+  const conCosto = r.pedidos - r.costo.sinCostoPedidos;
+  return conCosto > 0 && r.costo.dudosoPedidos * 10 >= conCosto;
+}
+
+function indicadoresCod(r: Resultados, margenObjetivoPct: number | null): Indicador[] {
   const sinPublicidad = r.publicidad.total <= 0;
+  const parte = parteDelTicket(r.costoPublicidadPorVenta, r.ticketPromedio);
+  let nivelDeMargen = nivelMargen(r.margenOperativo, margenObjetivoPct);
+  // Con costos dudosos el margen rojo puede ser un problema de datos y no del negocio: se pide revisar los costos.
+  const revisarCostos = nivelDeMargen === "rojo" && hayCostosDudosos(r);
+  if (revisarCostos) nivelDeMargen = "ambar";
   return [
     {
       id: "costo_venta",
       nombre: "Costo de publicidad por venta",
       valor: formatSoles(r.costoPublicidadPorVenta),
-      nivel: nivelCostoPorVenta(r.costoPublicidadPorVenta),
-      umbral: "Verde < S/ 18 · ámbar S/ 18–22 · rojo > S/ 22",
+      valorExtra: parte !== null ? `· ${numeroEs(Math.round(parte * 1000) / 10)} % del ticket` : undefined,
+      nivel: nivelCostoPorVenta(parte),
+      umbral: "Verde < 11 % del ticket · ámbar 11–14 % · rojo > 14 %",
       ayuda: sinPublicidad
         ? "Sin publicidad registrada en el periodo"
         : r.pedidos === 0
@@ -219,17 +293,26 @@ function indicadoresCod(r: Resultados): Indicador[] {
       nombre: "Retorno de publicidad",
       valor: formatVeces(r.retornoPublicidad),
       nivel: nivelRetorno(r.retornoPublicidad),
-      umbral: "Verde > 4x · ámbar 3–4x · rojo < 3x",
+      umbral: umbralRetorno(META_RETORNO),
       ayuda: sinPublicidad ? "Sin publicidad registrada en el periodo" : "Ventas ÷ publicidad",
     },
     {
       id: "margen",
       nombre: "Margen operativo",
       valor: formatPercent(r.margenOperativo, 1),
-      nivel: nivelMargen(r.margenOperativo),
-      umbral: "Verde > 28% · ámbar 20–28% · rojo < 20%",
-      ayuda:
-        r.margenOperativo === null ? "Sin ventas en el periodo" : "Utilidad operativa ÷ ventas",
+      nivel: nivelDeMargen,
+      etiquetaNivel: revisarCostos ? "Revisar costos" : undefined,
+      umbral: umbralMargen(margenObjetivoPct),
+      ayuda: revisarCostos
+        ? "Hay ventas con costo igual o mayor que el precio: revisa los costos en Productos"
+        : r.margenOperativo === null
+          ? "Sin ventas en el periodo"
+          : "Utilidad operativa ÷ ventas",
+      enlace: revisarCostos
+        ? { href: "/productos", texto: "Ir a Productos →" }
+        : margenObjetivoPct === null
+          ? { href: "/administracion/anual", texto: "Cargar meta de margen →" }
+          : undefined,
     },
   ];
 }
@@ -326,7 +409,7 @@ export default function ResumenAdminPage() {
   const delta = (valor: (x: Resultados) => number) =>
     a ? calcularDelta(valor(r), valor(a)) : undefined;
 
-  const indicadores = indicadoresCod(r);
+  const indicadores = indicadoresCod(r, metas.margenObjetivoPct);
   const nivelGeneral = peorNivel(indicadores.map((i) => i.nivel));
   const enAlerta = indicadores.filter((i) => i.nivel === "ambar" || i.nivel === "rojo").length;
 
@@ -416,12 +499,29 @@ export default function ResumenAdminPage() {
                     <p className="text-xs font-semibold text-pc-text">{indicador.nombre}</p>
                     <p className="text-[11px] text-pc-text-muted">{indicador.ayuda}</p>
                     <p className="text-[10.5px] text-pc-text-soft">{indicador.umbral}</p>
+                    {indicador.enlace && (
+                      <Link
+                        href={indicador.enlace.href}
+                        className="rounded text-[11px] font-semibold text-pc-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-pc-primary"
+                      >
+                        {indicador.enlace.texto}
+                      </Link>
+                    )}
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1">
-                    <span className="text-base font-bold tabular-nums text-pc-text">
-                      {indicador.valor}
-                    </span>
-                    <NivelPill nivel={indicador.nivel}>{ETIQUETA_NIVEL[indicador.nivel]}</NivelPill>
+                    <p className="text-right">
+                      <span className="text-base font-bold tabular-nums text-pc-text">
+                        {indicador.valor}
+                      </span>
+                      {indicador.valorExtra && (
+                        <span className="ml-1 text-[11px] tabular-nums text-pc-text-muted">
+                          {indicador.valorExtra}
+                        </span>
+                      )}
+                    </p>
+                    <NivelPill nivel={indicador.nivel}>
+                      {indicador.etiquetaNivel ?? ETIQUETA_NIVEL[indicador.nivel]}
+                    </NivelPill>
                   </div>
                 </li>
               ))}

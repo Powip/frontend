@@ -28,7 +28,6 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { createClient } from "@/utils/supabase/client";
 import { useDeletePostventaLead } from "@/hooks/useLeads";
 import {
   AlertDialog,
@@ -66,20 +65,13 @@ export const PostventaDetailModal: React.FC<PostventaDetailModalProps> = ({
       
       setLoading(true);
       try {
-        const supabase = await createClient();
-        
-        // Fetch lead information with joined activation data
-        const { data: leadData, error } = await supabase
-          .from('leads')
-          .select(`
-            *,
-            activations:lead_activations(*)
-          `)
-          .eq('id', leadId)
-          .single();
-
-        if (error) throw error;
-        setData(leadData);
+        // Lead con sus activaciones, vía la API del superadmin (service role).
+        // FEAT-23 T16: antes se leía directo con la anon key desde el navegador.
+        const res = await fetch(`/api/superadmin/leads/${leadId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        setData(await res.json());
       } catch (err) {
         console.error("Error fetching lead detail:", err);
         toast.error("No se pudo cargar la información del cliente");
@@ -89,7 +81,7 @@ export const PostventaDetailModal: React.FC<PostventaDetailModalProps> = ({
     };
 
     fetchData();
-  }, [isOpen, leadId]);
+  }, [isOpen, leadId, token]);
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);

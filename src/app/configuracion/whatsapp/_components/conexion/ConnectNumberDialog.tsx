@@ -26,8 +26,10 @@ import {
 } from "@/components/whatsapp/ui/wa-classes";
 import {
   COEX_SIGNUP_REQUIREMENTS,
+  CONNECTION_TYPE_DEFINITIONS,
   SIGNUP_REQUIREMENTS,
 } from "@/features/whatsapp/constants/whatsapp-connection-catalog";
+import { WHATSAPP_CONNECTION_TYPES } from "@/features/whatsapp/enums/whatsapp.enums";
 import type { WhatsAppAgentOption } from "@/features/whatsapp/models/conversation.model";
 import { cn } from "@/lib/utils";
 import {
@@ -53,7 +55,11 @@ export type SignupPhase =
 interface ConnectNumberDialogProps {
   storeId: string;
   storeName: string;
-  mode: "api" | "coex";
+  /**
+   * «api»: número dedicado; «coex»: el número que ya se usa en el celular.
+   * «choose»: la persona elige el modo en el cuadro (nunca se asume uno).
+   */
+  mode: SignupMode | "choose";
   blockedReason: string | null;
   startSignup: ConnectionMutations["startSignup"];
   selectSignupPhone?: ConnectionMutations["selectSignupPhone"];
@@ -64,13 +70,28 @@ interface ConnectNumberDialogProps {
   onClose: () => void;
 }
 
+type SignupMode = "api" | "coex";
+
+/** Opciones de modo, con los textos del catálogo de tipos de conexión. */
+const MODE_OPTIONS: Array<{ value: SignupMode; title: string; summary: string }> = [
+  { value: "api", type: WHATSAPP_CONNECTION_TYPES.API },
+  { value: "coex", type: WHATSAPP_CONNECTION_TYPES.COEXISTENCE },
+].map(({ value, type }) => {
+  const definition = CONNECTION_TYPE_DEFINITIONS.find((item) => item.value === type);
+  return {
+    value: value as SignupMode,
+    title: definition?.title ?? "",
+    summary: definition?.summary ?? "",
+  };
+});
+
 const STEP_LABELS = ["Inicia sesión con Meta", "Elige el número", "Verifica el código"];
 const COEX_STEP_LABELS = ["Inicia sesión con Meta", "Elige el número", "Confirma en el celular"];
 
 export function ConnectNumberDialog({
   storeId,
   storeName,
-  mode,
+  mode: modeProp,
   blockedReason,
   startSignup,
   selectSignupPhone,
@@ -80,6 +101,11 @@ export function ConnectNumberDialog({
   onClose,
 }: ConnectNumberDialogProps) {
   const reasonId = useId();
+  const modeLabelId = useId();
+  const chooseMode = modeProp === "choose";
+  const [chosenMode, setChosenMode] = useState<SignupMode | null>(chooseMode ? null : modeProp);
+  // Sin modo elegido no se muestran requisitos de ninguno de los dos caminos.
+  const mode = chooseMode ? chosenMode : modeProp;
   const [phase, setPhase] = useState<SignupPhase>(initialPhase);
   const [role, setRole] = useState<NumberRole>(reconnect?.isCompanyDefault ? "company" : "store");
   const [sellerId, setSellerId] = useState<string | null>(null);
@@ -93,6 +119,7 @@ export function ConnectNumberDialog({
   const confirmed = useRef<{ confirmNoCoexistence?: boolean; confirmReassign?: boolean }>({});
   const roleComplete = isRoleComplete(role, sellerId);
   const blocked = !!blockedReason || !startSignup;
+  const modeMissing = mode === null;
   const completedSteps = phase.kind === "success" ? 3 : 1;
   const expectedPhoneId = useId();
 
@@ -141,7 +168,7 @@ export function ConnectNumberDialog({
   };
 
   const run = async (confirmNoCoexistence: boolean) => {
-    if (blocked || !startSignup || phase.kind === "waiting") return;
+    if (blocked || !startSignup || !mode || phase.kind === "waiting") return;
     setPhase({ kind: "waiting" });
     confirmed.current = confirmNoCoexistence ? { confirmNoCoexistence: true } : {};
     try {
@@ -193,7 +220,7 @@ export function ConnectNumberDialog({
   // Número dedicado (sin coexistencia): se avisa ANTES de abrir Meta, porque el código de
   // Facebook sirve una sola vez. Con coexistencia se abre Meta y el backend lo confirma.
   const start = () => {
-    if (blocked || !roleComplete || phase.kind === "waiting") return;
+    if (blocked || !roleComplete || !mode || phase.kind === "waiting") return;
     // En una reconexión el aviso ya se confirmó al elegir la tarjeta.
     if (mode === "api" && reconnect) {
       void run(true);
@@ -241,29 +268,68 @@ export function ConnectNumberDialog({
           <DialogDescription className="sr-only">
             {mode === "coex"
               ? "Conecta el número que ya usas en la app WhatsApp Business."
-              : "Conecta un número dedicado a la API oficial de WhatsApp."}
+              : mode === "api"
+                ? "Conecta un número dedicado a la API oficial de WhatsApp."
+                : "Elige cómo conectar el número de WhatsApp."}
           </DialogDescription>
+
+          {chooseMode && phase.kind !== "success" && (
+            <div className={waField} role="radiogroup" aria-labelledby={modeLabelId}>
+              <span className={waLabel} id={modeLabelId}>
+                ¿Qué número vas a conectar?
+              </span>
+              {MODE_OPTIONS.map((option) => (
+                <label
+                  key={option.value}
+                  className={cn(
+                    "flex cursor-pointer items-start gap-2.5 rounded-lg border p-3 text-[13px]",
+                    chosenMode === option.value
+                      ? "border-wa-primary bg-wa-primary-soft"
+                      : "border-wa-border",
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name={`${modeLabelId}-mode`}
+                    className="mt-0.5"
+                    value={option.value}
+                    checked={chosenMode === option.value}
+                    disabled={phase.kind === "waiting"}
+                    onChange={() => setChosenMode(option.value)}
+                  />
+                  <span className="flex min-w-0 flex-col">
+                    <b className="font-semibold">{option.title}</b>
+                    <span className="text-xs text-wa-muted">{option.summary}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
 
           <b className="font-semibold">1. Inicia sesión con Meta</b>
           <p className="m-0 text-wa-muted">
             Usarás la cuenta de Facebook que administra el negocio de {storeName}. Meta te pedirá
             crear o elegir tu cuenta de WhatsApp Business.
           </p>
-          <ul className="m-0 flex list-none flex-col gap-2 p-0 text-xs">
-            {(mode === "coex" ? COEX_SIGNUP_REQUIREMENTS : SIGNUP_REQUIREMENTS).map(
-              (requirement) => (
-                <li key={requirement} className="flex items-center gap-2.5">
-                  <Check className="size-[18px] shrink-0 text-wa-green" aria-hidden="true" />
-                  {requirement}
-                </li>
-              ),
-            )}
-          </ul>
-          <p className="m-0 text-xs text-wa-muted">
-            {mode === "coex"
-              ? "Los pasos 2 y 3 (elegir el número y confirmarlo) ocurren en la ventana de Meta y en la app del celular, no en POWIP."
-              : "Los pasos 2 y 3 (elegir el número, el nombre visible y el código por SMS o llamada) ocurren en la ventana de Meta, no en POWIP."}
-          </p>
+          {mode && (
+            <ul className="m-0 flex list-none flex-col gap-2 p-0 text-xs">
+              {(mode === "coex" ? COEX_SIGNUP_REQUIREMENTS : SIGNUP_REQUIREMENTS).map(
+                (requirement) => (
+                  <li key={requirement} className="flex items-center gap-2.5">
+                    <Check className="size-[18px] shrink-0 text-wa-green" aria-hidden="true" />
+                    {requirement}
+                  </li>
+                ),
+              )}
+            </ul>
+          )}
+          {mode && (
+            <p className="m-0 text-xs text-wa-muted">
+              {mode === "coex"
+                ? "Los pasos 2 y 3 (elegir el número y confirmarlo) ocurren en la ventana de Meta y en la app del celular, no en POWIP."
+                : "Los pasos 2 y 3 (elegir el número, el nombre visible y el código por SMS o llamada) ocurren en la ventana de Meta, no en POWIP."}
+            </p>
+          )}
 
           {reconnect && (
             <p className="m-0 text-xs text-wa-muted">
@@ -338,7 +404,7 @@ export function ConnectNumberDialog({
           ) : (
             <BlockedActionButton
               className={waButton({ variant: "facebook" })}
-              blocked={blocked || !roleComplete || phase.kind === "waiting"}
+              blocked={blocked || !roleComplete || modeMissing || phase.kind === "waiting"}
               blockedReasonId={reasonId}
               onClick={start}
             >

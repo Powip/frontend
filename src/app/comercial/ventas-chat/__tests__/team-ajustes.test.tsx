@@ -1,6 +1,7 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import userEvent from "@testing-library/user-event";
 import AjustesView from "@/components/ventas-chat/AjustesView";
 import * as crmService from "@/services/crmService";
 import * as teamService from "@/services/crmTeamService";
@@ -46,6 +47,15 @@ jest.mock("@/services/crmTeamService", () => ({
   getExportLog: jest.fn(),
   createExport: jest.fn(),
 }));
+jest.mock("@/features/whatsapp/api/connection-ops.api", () => ({
+  ...jest.requireActual("@/features/whatsapp/api/connection-ops.api"),
+  setPrimaryWhatsAppNumber: jest.fn().mockResolvedValue(undefined),
+  assignWhatsAppNumber: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock("@/services/agentesService", () => ({
+  ...jest.requireActual("@/services/agentesService"),
+  getAgentesCC: jest.fn(),
+}));
 jest.mock("@/services/crmPlanService", () => ({
   ...jest.requireActual("@/services/crmPlanService"),
   connectChannelAccount: jest.fn(),
@@ -61,6 +71,14 @@ jest.mock("xlsx", () => ({
   writeFile: (...args: unknown[]) => mockDownload(...args),
 }));
 const team = teamService as jest.Mocked<typeof teamService>;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const waOps = require("@/features/whatsapp/api/connection-ops.api") as jest.Mocked<
+  typeof import("@/features/whatsapp/api/connection-ops.api")
+>;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const agentes = require("@/services/agentesService") as jest.Mocked<
+  typeof import("@/services/agentesService")
+>;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const plan = require("@/services/crmPlanService") as jest.Mocked<typeof import("@/services/crmPlanService")>;
 const crm = crmService as jest.Mocked<typeof crmService>;
@@ -488,7 +506,7 @@ describe("Ajustes · WhatsApp del negocio", () => {
     expect(within(card("whatsapp")).getByRole("button", { name: "Conectar con Facebook" })).toBeDisabled();
   });
 
-  it("con el simulador conecta por Embedded Signup en la tienda elegida", async () => {
+  const simulatorReady = () => {
     team.getEmbeddedSignupConfig.mockResolvedValue({
       enabled: true,
       appId: "app",
@@ -500,7 +518,7 @@ describe("Ajustes · WhatsApp del negocio", () => {
       status: "success",
       message: "ok",
       data: {
-        id: "1",
+        id: "acc-1",
         companyId: "co1",
         mode: "CUSTOM",
         wabaId: "w",
@@ -511,24 +529,112 @@ describe("Ajustes · WhatsApp del negocio", () => {
         updatedAt: "",
       },
     });
-    setup();
-    const btn = await within(card("whatsapp")).findByRole("button", { name: "Conectar con Facebook" });
+  };
+  /** Abre el mismo cuadro «Conectar número» de Configuración > WhatsApp. */
+  const openSignup = async () => {
+    const btn = await within(card("whatsapp")).findByRole("button", {
+      name: "Conectar con Facebook",
+    });
     await waitFor(() => expect(btn).toBeEnabled());
     fireEvent.click(btn);
+    return screen.findByRole("dialog", { name: "Conectar número de Tienda Dos" });
+  };
+  // Select de Radix en jsdom, igual que en las pruebas de Configuración > WhatsApp.
+  beforeAll(() => {
+    Element.prototype.hasPointerCapture = () => false;
+    Element.prototype.releasePointerCapture = () => undefined;
+    Element.prototype.scrollIntoView = () => undefined;
+  });
+  const pick = async (trigger: HTMLElement, label: RegExp | string) => {
+    const user = userEvent.setup({ delay: null });
+    await user.click(trigger);
+    await user.click(await screen.findByRole("option", { name: label }));
+  };
+  const chooseRole = (dialog: HTMLElement, label: RegExp) =>
+    pick(within(dialog).getByRole("combobox", { name: "Tipo de número" }), label);
+
+  it("pide elegir el modo y no muestra requisitos de número dedicado en coexistencia", async () => {
+    simulatorReady();
+    setup();
+    const dialog = await openSignup();
+    const start = within(dialog).getByRole("button", { name: "Continuar con Facebook" });
+    expect(start).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(within(dialog).getByRole("radio", { name: /API \+ app WhatsApp Business/ }));
+    expect(dialog).toHaveTextContent(/ya en uso en la app WhatsApp Business del celular/);
+    expect(dialog).not.toHaveTextContent("Un número que no esté usando la app de WhatsApp normal.");
+    expect(dialog).not.toHaveTextContent(/código por SMS/);
+  });
+
+  it("número principal de la empresa con número dedicado: avisa antes de abrir Meta", async () => {
+    simulatorReady();
+    setup();
+    const dialog = await openSignup();
+    fireEvent.click(within(dialog).getByRole("radio", { name: /API oficial de WhatsApp/ }));
+    await chooseRole(dialog, /Número principal de la empresa/);
+    fireEvent.change(within(dialog).getByLabelText("Número que vas a conectar (opcional)"), {
+      target: { value: "+51 900 000 001" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Continuar con Facebook" }));
+    // El mismo aviso de Configuración > WhatsApp: el número deja la app del celular.
+    expect(team.completeEmbeddedSignup).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "Sí, continuar" }));
     await waitFor(() =>
-      expect(team.completeEmbeddedSignup).toHaveBeenCalledWith({ storeId: "s2", code: "SIMULATED_CODE" }),
+      expect(team.completeEmbeddedSignup).toHaveBeenCalledWith({
+        storeId: "s2",
+        code: "SIMULATED_CODE",
+        asCompanyDefault: true,
+        confirmNoCoexistence: true,
+        expectedPhoneNumber: "+51 900 000 001",
+      }),
     );
-    expect(await screen.findByText(/Número conectado: \+51 900 000 001/)).toBeInTheDocument();
+    expect(await screen.findByText(/POWIP confirmó la conexión/)).toBeInTheDocument();
+    expect(waOps.setPrimaryWhatsAppNumber).not.toHaveBeenCalled();
+  });
+
+  it("número de vendedora con el que ya usa en el celular (coexistencia)", async () => {
+    simulatorReady();
+    agentes.getAgentesCC.mockResolvedValue([
+      { id: "ag-1", nombre: "Lucía Vendedora", email: "lucia@x.pe" },
+    ] as never);
+    setup();
+    const dialog = await openSignup();
+    fireEvent.click(within(dialog).getByRole("radio", { name: /API \+ app WhatsApp Business/ }));
+    await chooseRole(dialog, /Número de vendedora/);
+    const start = within(dialog).getByRole("button", { name: "Continuar con Facebook" });
+    // Sin vendedora elegida no deja continuar.
+    expect(start).toHaveAttribute("aria-disabled", "true");
+    await pick(
+      await within(dialog).findByRole("combobox", { name: "Vendedora" }),
+      "Lucía Vendedora",
+    );
+    fireEvent.click(start);
+    await waitFor(() =>
+      expect(team.completeEmbeddedSignup).toHaveBeenCalledWith({
+        storeId: "s2",
+        code: "SIMULATED_CODE",
+        coexistence: true,
+      }),
+    );
+    await waitFor(() =>
+      expect(waOps.assignWhatsAppNumber).toHaveBeenCalledWith("acc-1", {
+        userId: "ag-1",
+        userName: "Lucía Vendedora",
+      }),
+    );
+    expect(await screen.findByText(/POWIP confirmó la conexión/)).toBeInTheDocument();
+  });
+
+  it("número principal de la tienda: lo marca principal", async () => {
+    simulatorReady();
+    setup();
+    const dialog = await openSignup();
+    fireEvent.click(within(dialog).getByRole("radio", { name: /API \+ app WhatsApp Business/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Continuar con Facebook" }));
+    await waitFor(() => expect(waOps.setPrimaryWhatsAppNumber).toHaveBeenCalledWith("acc-1"));
   });
 
   it("si Meta falla al canjear el código muestra el error", async () => {
-    team.getEmbeddedSignupConfig.mockResolvedValue({
-      enabled: true,
-      appId: "app",
-      configId: "cfg",
-      apiVersion: "v26.0",
-      simulated: true,
-    });
+    simulatorReady();
     team.completeEmbeddedSignup.mockRejectedValue(
       Object.assign(new Error("x"), {
         isAxiosError: true,
@@ -536,10 +642,10 @@ describe("Ajustes · WhatsApp del negocio", () => {
       }),
     );
     setup();
-    const btn = await within(card("whatsapp")).findByRole("button", { name: "Conectar con Facebook" });
-    await waitFor(() => expect(btn).toBeEnabled());
-    fireEvent.click(btn);
-    expect(await within(card("whatsapp")).findByRole("alert")).toHaveTextContent("Meta no respondió");
+    const dialog = await openSignup();
+    fireEvent.click(within(dialog).getByRole("radio", { name: /API \+ app WhatsApp Business/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Continuar con Facebook" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Meta no respondió");
   });
 
   it("muestra cuántas plantillas hay aprobadas, en revisión y rechazadas", async () => {

@@ -189,3 +189,72 @@ it.each([
   expect(screen.getByRole("button", { name: "Guardar depósito pendiente" })).toBeDisabled();
   expect(service.createCourierSettlement).not.toHaveBeenCalled();
 });
+
+it("prefills the order, courier and pending amount from «Por liquidar» and hides fully confirmed orders", async () => {
+  const user = userEvent.setup({ delay: null });
+  service.confirmCourierCollection.mockResolvedValue(collection());
+  const other = { ...order, id: "order2", orderNumber: "ORD-2" } as unknown as OrderHeader;
+  const done = jest.fn();
+  render(
+    <ConfirmCollectionDialog
+      companyId="company"
+      orders={[order, other]}
+      couriers={[courier]}
+      pendingByOrder={new Map([["order1", 70]])}
+      excludedOrderIds={new Set(["order2"])}
+      initial={{ orderId: "order1", amount: 70, collectedAt: "2026-11-20" }}
+      onClose={jest.fn()}
+      onPersisted={async () => {}}
+      onComplete={done}
+    />,
+  );
+  expect(screen.getByLabelText("Pedido")).toHaveValue("order1");
+  expect(screen.queryByRole("option", { name: /ORD-2/ })).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Courier que cobró")).toHaveValue("courier1");
+  expect(screen.getByLabelText("Importe cobrado PEN")).toHaveValue("70");
+  expect(screen.getByLabelText("Fecha de cobro")).toHaveValue("2026-11-20");
+  await user.type(screen.getByLabelText("Cómo se verificó el cobro"), "Reporte del courier");
+  await user.click(screen.getByRole("button", { name: "Confirmar cobro" }));
+  await waitFor(() => expect(done).toHaveBeenCalled());
+  expect(service.confirmCourierCollection).toHaveBeenCalledWith(
+    "company",
+    expect.objectContaining({ orderId: "order1", amount: 70, collectedAt: "2026-11-20" }),
+  );
+});
+
+it("explains why an order with an inactive courier cannot be confirmed", () => {
+  render(
+    <ConfirmCollectionDialog
+      companyId="company"
+      orders={[order]}
+      couriers={[{ ...courier, isActive: false }]}
+      initial={{ orderId: "order1", amount: 100 }}
+      onClose={jest.fn()}
+      onPersisted={async () => {}}
+      onComplete={jest.fn()}
+    />,
+  );
+  expect(screen.getByRole("alert")).toHaveTextContent("inactivo o eliminado");
+  expect(screen.getByRole("button", { name: "Confirmar cobro" })).toBeDisabled();
+});
+
+it("clears the prefilled amount when switching to an order without a known pending amount", () => {
+  const other = { ...order, id: "order2", orderNumber: "ORD-2" } as unknown as OrderHeader;
+  render(
+    <ConfirmCollectionDialog
+      companyId="company"
+      orders={[order, other]}
+      couriers={[courier]}
+      pendingByOrder={new Map([["order1", 320]])}
+      initial={{ orderId: "order1", amount: 320 }}
+      onClose={jest.fn()}
+      onPersisted={async () => {}}
+      onComplete={jest.fn()}
+    />,
+  );
+  expect(screen.getByLabelText("Importe cobrado PEN")).toHaveValue("320");
+  fireEvent.change(screen.getByLabelText("Pedido"), { target: { value: "order2" } });
+  expect(screen.getByLabelText("Importe cobrado PEN")).toHaveValue("");
+  fireEvent.change(screen.getByLabelText("Pedido"), { target: { value: "order1" } });
+  expect(screen.getByLabelText("Importe cobrado PEN")).toHaveValue("320");
+});

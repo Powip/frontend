@@ -24,7 +24,6 @@ import { useRouter } from 'next/navigation';
 import { StatusBadge, POSTVENTA_STATES, getStatusLabel } from './StatusBadge';
 import { LeadActivitiesDrawer } from './LeadActivitiesDrawer';
 import { Checkbox } from '@/components/ui/checkbox';
-import { createClient } from "@/utils/supabase/client";
 import { useDeletePostventaLead } from "@/hooks/useLeads";
 import {
   AlertDialog,
@@ -219,13 +218,13 @@ export const PostventaTable: React.FC<PostventaTableProps> = ({
 
       setLoadingOnboarding(true);
       try {
-        const supabase = await createClient();
-        const { data: steps, error } = await supabase
-          .from('onboarding_progress')
-          .select('*')
-          .in('business_id', bizIds);
-
-        if (error) throw error;
+        // FEAT-23 T16: vía la API del superadmin (service role), no con la anon key.
+        const res = await fetch(
+          `/api/superadmin/onboarding?business_ids=${encodeURIComponent(bizIds.join(','))}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const steps: any[] = await res.json();
 
         // Group by business_id
         const grouped = (steps || []).reduce((acc: any, step: any) => {
@@ -243,7 +242,7 @@ export const PostventaTable: React.FC<PostventaTableProps> = ({
     };
 
     fetchOnboarding();
-  }, [paginatedIds, currentPage, paginatedData]);
+  }, [paginatedIds, currentPage, paginatedData, token]);
 
   // Count items per state for sub-tabs
   const stateCounts = POSTVENTA_STATES.reduce((acc, state) => {

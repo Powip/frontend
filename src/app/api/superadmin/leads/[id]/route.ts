@@ -28,7 +28,8 @@ export async function GET(
       .from("leads")
       .select(`
         *,
-        activities:lead_activities(*)
+        activities:lead_activities(*),
+        activations:lead_activations(*)
       `)
       .eq("id", id)
       .single();

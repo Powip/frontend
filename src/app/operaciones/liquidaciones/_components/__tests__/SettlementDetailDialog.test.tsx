@@ -12,6 +12,11 @@ jest.mock("@/services/courierSettlementsService", () => ({
   uploadSettlementProof: jest.fn(),
   getSettlementProofUrl: jest.fn(),
 }));
+jest.mock("@/services/userService", () => ({
+  listCompanyUsers: jest.fn().mockResolvedValue([
+    { id: "other-user", name: "Lucía", surname: "Paz", email: "lucia@example.test" },
+  ]),
+}));
 const service = jest.mocked(api);
 const proof: api.SettlementProof = {
   id: "proof1",
@@ -164,4 +169,22 @@ it("allows a documented rejection without claiming collection or settlement succ
       notes: "Comprobante no corresponde",
     }),
   );
+});
+
+it("shows who registered and acted instead of raw user ids", async () => {
+  service.getCourierSettlement.mockResolvedValue(
+    detail({
+      createdBy: "other-user",
+      events: [
+        { id: "e1", type: "DEPOSIT_REGISTERED", actorId: "other-user", data: {}, createdAt: "2026-11-02" },
+        { id: "e2", type: "PROOF_ATTACHED", actorId: "user", data: {}, createdAt: "2026-11-02" },
+        { id: "e3", type: "PROOF_ATTACHED", actorId: "0f9e8d7c-1234-4bcd-9abc-1234567890ab", data: {}, createdAt: "2026-11-02" },
+      ],
+    }),
+  );
+  view();
+  expect(await screen.findByText(/Registrado por Lucía Paz/)).toBeInTheDocument();
+  expect(screen.getByText(/^Tú ·/)).toBeInTheDocument();
+  expect(screen.getByText(/^Usuario 0f9e8d7c ·/)).toBeInTheDocument();
+  expect(screen.queryByText(/other-user/)).not.toBeInTheDocument();
 });
