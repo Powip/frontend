@@ -492,6 +492,10 @@ export function greErrorMessage(error: unknown, fallback = "No se pudo completar
       return "Este RUC todavía no tiene credenciales GRE.";
     case "GRE_SEQUENCE_CANNOT_MOVE_BACK":
       return "Ese número ya se usó en la serie: el próximo número no puede ser menor que el actual.";
+    case "GRE_SERIE_FRENADA":
+      return typeof data?.message === "string" && data.message
+        ? data.message
+        : GRE_SERIES_BRAKE_NOTICE;
     case "SUNAT_PROFILE_NOT_FOUND":
     case "SUNAT_DEFAULT_PROFILE_NOT_FOUND":
       return "No se encontró el RUC emisor. Revisa tus certificados en Facturación › Certificado Digital.";
@@ -549,6 +553,10 @@ export function greBlockedByList(settings: GreSettingsLike): boolean {
 
 export const GRE_PILOT_NOTICE = "La emisión real de guías de remisión se habilita con la empresa piloto.";
 
+/** Freno de serie (409 GRE_SERIE_FRENADA de ms-sunat) cuando no llega su mensaje. */
+export const GRE_SERIES_BRAKE_NOTICE =
+  "La serie está frenada: SUNAT respondió 1033 porque ese número de guía ya se usó fuera de Powip (otro sistema de facturación o SOL). Powip no enviará más guías de esta serie para no gastar números. Revisa en SUNAT el último número usado y, en Facturación › Certificado Digital › Credenciales GRE, cambia la serie o guarda el próximo número libre.";
+
 /** Texto del 403 GRE_NO_HABILITADA de ms-sunat (modo solo lista y la empresa no está en ella). */
 export const GRE_NOT_ENABLED_NOTICE = "La guía de remisión electrónica todavía no está habilitada para tu empresa.";
 
@@ -568,6 +576,21 @@ export function greEmissionBlockReason(settings: GreSettingsLike | null | undefi
 }
 
 /** Texto del último error de envío (viene en inglés del backend). */
+/**
+ * Detalle de una guía rechazada. El 1033 (número ya registrado en SUNAT) se
+ * explica en claro: casi siempre la serie también la usa otro sistema de
+ * facturación o SOL, y ms-sunat frena la serie hasta que la empresa guarde el
+ * próximo número libre.
+ */
+export function greRejectionText(sunatCode: string | null | undefined, sunatDescription: string | null | undefined): string {
+  const code = sunatCode ? /(\d+)\s*$/.exec(sunatCode)?.[1] : undefined;
+  const description = text(sunatDescription);
+  if (code === "1033" || /registrado previamente|informado anteriormente/i.test(description)) {
+    return "Código 1033: ese número de guía ya existe en SUNAT (lo usó otro sistema de facturación o SOL). La serie quedó frenada: en Facturación › Certificado Digital › Credenciales GRE guarda el próximo número libre o cambia la serie.";
+  }
+  return `Código ${sunatCode ?? "—"}: ${description || "sin descripción"}`;
+}
+
 export function greLastErrorText(lastError: string | null | undefined): string | null {
   const value = text(lastError);
   if (!value) return null;

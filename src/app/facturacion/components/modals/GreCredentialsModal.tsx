@@ -38,8 +38,11 @@ export function greCredentialsProblems(form: GreCredentialsForm, current: GrePro
   if (!form.clientSecret.trim()) problems.clientSecret = current?.configured ? "Vuelve a escribir el client_secret: no se guarda a la vista." : "Escribe el client_secret que te dio SOL.";
   else if (form.clientSecret.trim().length > 500) problems.clientSecret = "El client_secret no puede tener más de 500 caracteres.";
   if (!/^T[A-Z0-9]{3}$/.test(form.series.trim().toUpperCase())) problems.series = "La serie de la guía remitente tiene 4 caracteres y empieza con T (por ejemplo, T001).";
+  // Obligatorio: la empresa confirma qué número está libre en SUNAT (si emite
+  // guías con la misma serie fuera de Powip). Guardarlo libera el freno de la serie.
   const next = form.nextCorrelative.trim();
-  if (next) {
+  if (!next) problems.nextCorrelative = "Escribe el próximo número libre de la serie en SUNAT (1 si nunca emitiste guías con ella).";
+  else {
     const value = Number(next);
     if (!/^\d+$/.test(next) || value < 1 || value > 99_999_999) problems.nextCorrelative = "El próximo número va de 1 a 99999999.";
     else if (current?.nextCorrelative && current.series === form.series.trim().toUpperCase() && value < current.nextCorrelative)
@@ -48,16 +51,14 @@ export function greCredentialsProblems(form: GreCredentialsForm, current: GrePro
   return problems;
 }
 
-export function greCredentialsRequest(form: GreCredentialsForm, current: GreProfileSettings | null): UpsertGreCredentialRequest {
-  const series = form.series.trim().toUpperCase();
-  const next = form.nextCorrelative.trim();
-  // El número que ya mostraba el formulario no se reenvía (y al cambiar de serie no se arrastra a la nueva).
-  const unchangedNext = current?.nextCorrelative != null && Number(next) === current.nextCorrelative;
+export function greCredentialsRequest(form: GreCredentialsForm): UpsertGreCredentialRequest {
+  // ms-sunat exige el próximo número siempre: guardarlo es la confirmación de
+  // la empresa de que está libre en SUNAT (y libera el freno de la serie).
   return {
     clientId: form.clientId.trim(),
     clientSecret: form.clientSecret.trim(),
-    series,
-    ...(next && !unchangedNext ? { nextCorrelative: Number(next) } : {}),
+    series: form.series.trim().toUpperCase(),
+    nextCorrelative: Number(form.nextCorrelative.trim()),
   };
 }
 
@@ -79,7 +80,7 @@ function GreCredentialsDialog({ profile, onClose }: { profile: GreProfileSetting
   const problems = greCredentialsProblems(form, profile);
 
   const save = useMutation({
-    mutationFn: () => upsertGreCredentialApi(profile.sunatProfileId, greCredentialsRequest(form, profile)),
+    mutationFn: () => upsertGreCredentialApi(profile.sunatProfileId, greCredentialsRequest(form)),
     onSuccess: (credential) => {
       toast.success(`Credenciales GRE guardadas para el RUC ${profile.ruc} (serie ${credential.series}).`);
       void queryClient.invalidateQueries({ queryKey: greKeys.all });
@@ -135,13 +136,14 @@ function GreCredentialsDialog({ profile, onClose }: { profile: GreProfileSetting
               {error("series")}
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="gre-next">Próximo número (opcional)</Label>
+              <Label htmlFor="gre-next">Próximo número</Label>
               <Input id="gre-next" inputMode="numeric" placeholder="1" {...field("nextCorrelative")} />
               {error("nextCorrelative")}
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
-            Si ya emitiste guías con esta serie fuera de Powip, pon el número que sigue: SUNAT rechaza un número repetido. No se puede retroceder.
+            Pon el primer número libre de la serie en SUNAT. Si ya emitiste guías con esta serie fuera de Powip (otro sistema o SOL), pon el que sigue al
+            último: SUNAT rechaza un número repetido. No se puede retroceder.
           </p>
           {submitError ? (
             <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">

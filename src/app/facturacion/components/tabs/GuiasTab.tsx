@@ -32,6 +32,7 @@ import {
   greEmissionBlockReason,
   greErrorMessage,
   greLastErrorText,
+  greRejectionText,
   isGreEligibleOrderStatus,
 } from "@/features/sunat/despatch-advice/utils/gre-form";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
@@ -258,7 +259,7 @@ export function GuiasTab({ comprobanteRows, issuer }: GuiasTabProps) {
                     const busy = busyId === advice.id;
                     const detail =
                       advice.status === "REJECTED"
-                        ? `Código ${advice.sunatCode ?? "—"}: ${advice.sunatDescription ?? "sin descripción"}`
+                        ? greRejectionText(advice.sunatCode, advice.sunatDescription)
                         : advice.status === "PENDING"
                           ? greLastErrorText(advice.lastError)
                           : advice.status === "ACCEPTED_WITH_OBSERVATION" && advice.observations.length

@@ -3,12 +3,14 @@
 import { AlertTriangle, KeyRound, RefreshCw, ShieldCheck, ShieldX, Trash2 } from "lucide-react";
 import { useState } from "react";
 import CertificadoReplaceModal from "@/app/facturacion/components/modals/CertificadoReplaceModal";
+import { CpeValidationCredentialsRow } from "@/app/facturacion/components/CpeValidationCredentials";
 import CertificadoUploadModal from "@/app/facturacion/components/modals/CertificadoUploadModal";
 import { DeleteSunatProfileDialog } from "@/app/facturacion/components/modals/DeleteSunatProfileDialog";
 import GreCredentialsModal from "@/app/facturacion/components/modals/GreCredentialsModal";
 import { GreModeBanner } from "@/components/gre/GreModeBanner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useCpeValidationAccess } from "@/features/sunat/cpe-validation/use-cpe-validation";
 import { useGreSettings } from "@/features/sunat/despatch-advice/hooks/use-despatch-advices";
 import type { GreProfileSettings } from "@/features/sunat/despatch-advice/types/despatch-advice.types";
 import { useSetDefaultSunatProfile } from "@/features/sunat/sunat-profile/hooks/use-set-default-sunat-profie";
@@ -31,6 +33,8 @@ export function CertificadoTab({ onAddIssuer }: CertificadoTabProps = {}) {
   const { data: profiles = [], isLoading, isError } = useSunatProfiles();
   // FEAT-24 H12 — credenciales GRE (guía de remisión) por RUC.
   const greSettings = useGreSettings(profiles.length > 0);
+  // Freno de duplicados (Consulta Integrada): solo para quien ms-sunat deja administrarlo.
+  const cpeAccess = useCpeValidationAccess(profiles.length > 0);
 
   const setDefaultProfile = useSetDefaultSunatProfile();
 
@@ -199,12 +203,28 @@ export function CertificadoTab({ onAddIssuer }: CertificadoTabProps = {}) {
                           ? `client_id ${gre.clientId ?? "—"} · serie ${gre.series ?? "T001"} · próximo número ${gre.nextCorrelative ?? 1}`
                           : "Carga el client_id y el client_secret de SOL para emitir guías de remisión con este RUC."}
                       </p>
+                      {gre?.seriesBrake ? (
+                        <p
+                          role="alert"
+                          className="mt-2 max-w-xl rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs"
+                          data-testid={`gre-series-brake-${profile.ruc}`}
+                        >
+                          <span className="font-semibold">Serie {gre.seriesBrake.series} frenada.</span> SUNAT respondió{" "}
+                          {gre.seriesBrake.sunatCode} a la guía {gre.seriesBrake.series}-{gre.seriesBrake.correlative}: ese número ya
+                          se usó fuera de Powip (otro sistema de facturación o SOL). No se enviarán más guías de esta serie hasta que
+                          revises en SUNAT el último número usado y guardes aquí el próximo número libre o cambies la serie.
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                   <Button variant="outline" disabled={!gre} onClick={() => setGreProfile(gre)}>
                     {gre?.configured ? "Actualizar credenciales GRE" : "Configurar credenciales GRE"}
                   </Button>
                 </div>
+
+                {cpeAccess.data?.canManage ? (
+                  <CpeValidationCredentialsRow profile={profile} serviceConfigured={cpeAccess.data.serviceConfigured} />
+                ) : null}
 
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
                   <div className="flex flex-wrap gap-2">

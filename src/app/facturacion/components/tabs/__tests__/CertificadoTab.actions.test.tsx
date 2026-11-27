@@ -16,6 +16,9 @@ jest.mock("@/features/sunat/despatch-advice/hooks/use-despatch-advices", () => (
   greKeys: { all: ["despatch-advices"] },
   useGreSettings: () => ({ data: undefined, isPending: true, isError: false }),
 }));
+jest.mock("@/features/sunat/cpe-validation/use-cpe-validation", () => ({
+  useCpeValidationAccess: () => ({ data: undefined, isPending: false, isError: false }),
+}));
 jest.mock("@/app/facturacion/components/modals/CertificadoUploadModal", () => ({
   __esModule: true,
   default: () => null,
