@@ -22,6 +22,12 @@ describe("getEmissionErrorMessage", () => {
     );
   });
 
+  it("explica que la nota de crédito supera el saldo por acreditar", () => {
+    expect(getEmissionErrorMessage(error("SUNAT_CREDIT_NOTE_EXCEEDS_BALANCE"))).toMatch(
+      /supera el saldo por acreditar/,
+    );
+  });
+
   it("usa un mensaje genérico para códigos desconocidos, sin mostrar texto técnico", () => {
     expect(getEmissionErrorMessage(error("UNEXPECTED_ERROR"))).toBe(GENERIC_EMISSION_ERROR_MESSAGE);
   });

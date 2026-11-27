@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "sonner";
 import NotaCreditoModal from "@/app/facturacion/components/modals/NotaCreditoModal";
 import { NotasTab } from "@/app/facturacion/components/tabs/NotasTab";
 import type { Order } from "@/features/sales/models/order";
@@ -184,6 +185,46 @@ describe("NotaCreditoModal emite al backend", () => {
     });
     expect(onEmitida).toHaveBeenCalledWith(nota);
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("doble clic en Emitir envía una sola nota", async () => {
+    let resolve: (value: unknown) => void = () => {};
+    mutateAsync.mockReturnValue(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    renderModal();
+
+    const button = screen.getByRole("button", { name: /emitir nota de crédito/i });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    resolve({ documents: [nota], errors: [] });
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
+    expect(mutateAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it("muestra el aviso en español si el backend frena la nota por saldo", async () => {
+    mutateAsync.mockResolvedValue({
+      documents: [],
+      errors: [
+        {
+          orderId: "order-1",
+          error: { code: "SUNAT_CREDIT_NOTE_EXCEEDS_BALANCE", message: "backend" },
+        },
+      ],
+    });
+    const { onEmitida } = renderModal();
+
+    await userEvent.click(screen.getByRole("button", { name: /emitir nota de crédito/i }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringMatching(/supera el saldo por acreditar/),
+      ),
+    );
+    expect(onEmitida).not.toHaveBeenCalled();
   });
 
   it("no envía devolución total si la factura ya tiene una nota", async () => {

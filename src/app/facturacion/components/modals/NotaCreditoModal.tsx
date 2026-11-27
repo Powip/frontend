@@ -1,7 +1,7 @@
 "use client";
 
 import { FileMinus, Loader2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { MOTIVOS_NC } from "@/app/facturacion/lib/motivos-nota-credito";
 import { Button } from "@/components/ui/button";
@@ -96,6 +96,7 @@ export default function NotaCreditoModal({
   const [montoManual, setMontoManual] = useState("");
 
   const createDocuments = useCreateSunatDocuments();
+  const sendingRef = useRef(false);
 
   const row = useMemo(
     () => aceptados.find((item) => item.sale.id === originalId),
@@ -148,6 +149,8 @@ export default function NotaCreditoModal({
   }, [original, isFull, isAmount, originalTotal, montoManual, originalItems, qty]);
 
   const handleEmitir = async () => {
+    // Double click guard: `isPending` only disables the button after the next render.
+    if (sendingRef.current) return;
     if (!original || !row) {
       toast.error("Selecciona el comprobante original");
       return;
@@ -185,6 +188,7 @@ export default function NotaCreditoModal({
       amount: total,
     });
 
+    sendingRef.current = true;
     try {
       const result = await createDocuments.mutateAsync({ documents: [request] });
       const [error] = result.errors;
@@ -205,6 +209,8 @@ export default function NotaCreditoModal({
     } catch (error) {
       console.error("Error al emitir la nota de crédito:", error);
       toast.error("No se pudo emitir la nota de crédito. Revisa tu conexión e intenta nuevamente.");
+    } finally {
+      sendingRef.current = false;
     }
   };
 
