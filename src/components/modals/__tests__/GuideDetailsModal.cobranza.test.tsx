@@ -18,6 +18,8 @@ jest.mock("@/components/modals/PaymentVerificationModal", () => ({ __esModule: t
 jest.mock("@/components/shalom/SendToShalomModal", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/components/aliclik/SendToAliclikGuideModal", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/components/eva/SendToEvaGuideModal", () => ({ __esModule: true, default: () => null }));
+jest.mock("@/components/olva/send-to-olva/SendToOlvaModal", () => ({ __esModule: true, default: () => null }));
+jest.mock("@/components/olva/OlvaOrderShipmentCell", () => ({ OlvaOrderShipmentCell: () => null }));
 jest.mock("@/components/modals/ShalomShippingLabelsModal", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/utils/printOrderLabel", () => ({ generateQR: jest.fn().mockResolvedValue("data:image/png;base64,qr"), generateBarcode: () => "" }));
 jest.mock("@/utils/printShippingGuide", () => ({ printShippingGuide: jest.fn().mockResolvedValue(undefined) }));

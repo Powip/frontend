@@ -1,11 +1,19 @@
 "use client";
 
 import { OrderHeader } from "@/interfaces/IOrder";
-import { isAliclikCourier, isEvaCourier, isShalomCourier } from "@/utils/courierNormalizer";
+import {
+  isAliclikCourier,
+  isEvaCourier,
+  isOlvaCourier,
+  isShalomCourier,
+} from "@/utils/courierNormalizer";
 import { ShalomStatusBadge } from "./ShalomStatusBadge";
 import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
 import EvaStatusBadge, { STATUS_LABEL as EVA_STATUS_LABEL } from "@/components/eva/EvaStatusBadge";
 import { Badge } from "@/components/ui/badge";
+import { olvaStatusBadgeVariant } from "@/components/olva/utils/olva-status-badge-variant";
+import { getOlvaShipmentStatusLabel } from "@/features/olva/olva-shipment/utils/get-olva-shipment-status-label";
+import type { OlvaShipmentStatus } from "@/features/olva/shared/constants/olva-enums.constants";
 
 export const SHALOM_STATUS_LABELS: Record<string, string> = {
   PENDIENTE: "Registrado",
@@ -29,7 +37,7 @@ export const ALICLIK_STATUS_LABELS: Record<string, string> = {
   CANCELED: "Cancelado",
 };
 
-export type CourierStatusSource = "shalom" | "aliclik" | "eva";
+export type CourierStatusSource = "shalom" | "aliclik" | "eva" | "olva";
 
 export interface CourierStatusInfo {
   source: CourierStatusSource;
@@ -72,6 +80,15 @@ export function getOrderCourierStatus(order: OrderHeader): CourierStatusInfo | n
       sourceLabel: "EVA",
       value: order.evaStatus,
       label: EVA_STATUS_LABEL[order.evaStatus] ?? order.evaStatus,
+    };
+  }
+  // FEAT-35: el estado lo avisa ms-integrations (webhook de Olva o conciliación)
+  if (isOlvaCourier(order.courier) && order.olvaStatus) {
+    return {
+      source: "olva",
+      sourceLabel: "Olva",
+      value: order.olvaStatus,
+      label: getOlvaShipmentStatusLabel(order.olvaStatus as OlvaShipmentStatus),
     };
   }
   return null;
@@ -125,6 +142,14 @@ export function CourierStatusBadge({
   }
   if (isEva && order.evaStatus) {
     return <EvaStatusBadge evaStatus={order.evaStatus} evaSyncedAt={order.evaSyncedAt} />;
+  }
+  if (isOlvaCourier(order.courier) && order.olvaStatus) {
+    const status = order.olvaStatus as OlvaShipmentStatus;
+    return (
+      <Badge variant={olvaStatusBadgeVariant(status)} className="text-[10px]">
+        {getOlvaShipmentStatusLabel(status)}
+      </Badge>
+    );
   }
   return <span className="text-xs text-muted-foreground">—</span>;
 }

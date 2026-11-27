@@ -1,0 +1,41 @@
+import type { ValueOf } from "../../shared/types/value-of.type";
+
+/**
+ * Codes of the shipment flows, in `details.code` of an error response or in `error.code` of a bulk
+ * item. Mirrors ms-integrations: src/olva/domain/shipments/shipment.errors.ts
+ */
+export const OLVA_SHIPMENT_ERROR_CODES = {
+  /** The order already has an active Olva shipment in this company. */
+  ALREADY_EXISTS: "SHIPMENT_ALREADY_EXISTS",
+  /** The origin headquarter is not in Olva's catalog. */
+  ORIGIN_NOT_FOUND: "SHIPMENT_ORIGIN_NOT_FOUND",
+  /** The origin headquarter does not offer the chosen `whoPays` / payment method. */
+  ORIGIN_DOES_NOT_ACCEPT_PAYMENT: "SHIPMENT_ORIGIN_DOES_NOT_ACCEPT_PAYMENT",
+  /** The destination ubigeo code of a home delivery is not in Olva's ubigeo catalog. */
+  DESTINATION_UBIGEO_NOT_FOUND: "SHIPMENT_DESTINATION_UBIGEO_NOT_FOUND",
+  /**
+   * The payment provider (e.g. PagoEfectivo) is down, so no payment could be created. The API
+   * answers 503 with this code; the user can retry later or, for a pickup at an agency, pick
+   * another way to pay (Niubiz is not offered).
+   */
+  PAYMENT_PROVIDER_UNAVAILABLE: "PAYMENT_PROVIDER_UNAVAILABLE",
+  /** Olva refused this item of a bulk request. */
+  REJECTED_BY_OLVA: "SHIPMENT_REJECTED_BY_OLVA",
+  /** The Powip order does not exist in this company (FEAT-35). */
+  ORDER_NOT_FOUND: "SHIPMENT_ORDER_NOT_FOUND",
+  /** The order cannot be dispatched (cancelled, not paid, ...) (FEAT-35). */
+  ORDER_NOT_DISPATCHABLE: "SHIPMENT_ORDER_NOT_DISPATCHABLE",
+  /** Sales could not be asked about the order: try again in a moment (FEAT-35). */
+  ORDER_NOT_VERIFIED: "SHIPMENT_ORDER_NOT_VERIFIED",
+  /** The item was not sent to Olva (FEAT-35). */
+  NOT_SENT: "SHIPMENT_NOT_SENT",
+  /** «Reintentar» only applies to a registration Olva did not confirm (SUBMITTING) (FEAT-35). */
+  NOT_RETRYABLE: "SHIPMENT_NOT_RETRYABLE",
+  /**
+   * Olva has not confirmed for more than an hour: check the guide at Olva, then retry with
+   * `confirmed: true` (FEAT-35).
+   */
+  MANUAL_REVIEW: "SHIPMENT_MANUAL_REVIEW",
+} as const;
+
+export type OlvaShipmentErrorCode = ValueOf<typeof OLVA_SHIPMENT_ERROR_CODES>;

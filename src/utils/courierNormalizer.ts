@@ -19,6 +19,10 @@ export const isShalomCourier = (courier?: string | null): boolean => {
   return normalizeCourier(courier) === "Shalom";
 };
 
+export const isOlvaCourier = (courier?: string | null): boolean => {
+  return normalizeCourier(courier) === "Olva Courier";
+};
+
 export function isAliclikCourier(courierName?: string | null): boolean {
   if (!courierName) return false;
   const c = courierName.trim().toLowerCase();

@@ -338,6 +338,15 @@ export interface OrderHeader extends UnitAssignmentState {
   evaSyncedAt?: string | null;
 
   // ========================================
+  // ✅ CAMPOS DE OLVA (FEAT-35)
+  // ========================================
+  /** Envío de Olva vigente del pedido (id en ms-integrations). */
+  olvaShipmentId?: string | null;
+  /** Último estado avisado por ms-integrations (REGISTERED, IN_TRANSIT, DELIVERED...). */
+  olvaStatus?: string | null;
+  olvaSyncedAt?: string | null;
+
+  // ========================================
   // ✅ NUEVOS CAMPOS DE SHALOM
   // ========================================
   shalomStatus?: ShalomStatus | null;

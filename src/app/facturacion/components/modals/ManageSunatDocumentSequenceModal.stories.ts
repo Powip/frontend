@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
-import { fn } from "storybook/test";
-import { sunatDocumentSequenceHandlers } from "@/mocks/handlers/identity-lookup.handlers";
+import { fn, screen, userEvent } from "storybook/test";
+import { sunatDocumentSequenceHandlers } from "@/mocks/handlers/sunat-document-sequence.handlers";
 import { ManageSunatDocumentSequenceModal } from "./ManageSunatDocumentSequenceModal";
 
 const EXISTING_SEQUENCES = [
@@ -61,9 +61,10 @@ export const AddNewSeriesSuggestsNextCode: Story = {
     definition: null,
     sequence: null,
   },
-  play: async ({ canvas, userEvent }) => {
-    await userEvent.click(canvas.getByRole("combobox", { name: /tipo de documento/i }));
-    await userEvent.click(await canvas.findByText(/factura electrónica/i));
+  // The dialog and the Select options render in portals outside the story canvas, so query through `screen`
+  play: async () => {
+    await userEvent.click(await screen.findByRole("combobox", { name: /tipo de documento/i }));
+    await userEvent.click(await screen.findByRole("option", { name: /factura electrónica/i }));
   },
 };
 

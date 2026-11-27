@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
-import { sunatDocumentSequenceHandlers } from "@/mocks/handlers/identity-lookup.handlers";
+import { sunatDocumentSequenceHandlers } from "@/mocks/handlers/sunat-document-sequence.handlers";
 import { SeriesTab } from "./SeriesTab";
 
 const meta = {
@@ -52,7 +52,8 @@ export const SetDefaultSeries: Story = {
     },
   },
   play: async ({ canvas, userEvent }) => {
-    await userEvent.click(canvas.getByRole("button", { name: /marcar/i }));
+    // The list loads asynchronously, so wait for the row button instead of querying immediately
+    await userEvent.click(await canvas.findByRole("button", { name: /marcar/i }));
   },
 };
 
@@ -63,7 +64,7 @@ export const SetDefaultSeries: Story = {
  */
 export const OpenAddSeriesModal: Story = {
   play: async ({ canvas, userEvent }) => {
-    await userEvent.click(canvas.getByRole("button", { name: /agregar serie/i }));
+    await userEvent.click(await canvas.findByRole("button", { name: /agregar serie/i }));
   },
 };
 
