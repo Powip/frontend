@@ -426,7 +426,8 @@ export function ConnectionView({
         <ConnectNumberDialog
           storeId={signupStore.id}
           storeName={signupStore.name}
-          mode={signup.mode === "coex" ? "coex" : "api"}
+          // «Conectar número» sin modo: la persona elige dedicado o el que ya usa en el celular.
+          mode={signup.mode === "coex" || signup.mode === "api" ? signup.mode : "choose"}
           blockedReason={combineBlockReasons(
             signupAvailable ? null : (signupUnavailableReason ?? SIGNUP_UNAVAILABLE_REASON),
             pending(mutations.startSignup),
