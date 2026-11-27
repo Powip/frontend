@@ -517,7 +517,21 @@ describe("Ventas — detalle y acciones solo de ventas confirmadas", () => {
     const row = (await screen.findByText("ORD-001")).closest("tr")!;
     fireEvent.click(within(row).getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: /Imprimir seleccionados \(1\)/ }));
-    expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/Al marcar Preparado, se registrará la reserva/));
+    expect(toast.error).toHaveBeenCalledWith("No se pueden imprimir 1 venta(s) (ORD-001): su stock aún no está reservado. Márcalas como Preparado con «Cambiar estado» y luego imprime las etiquetas.");
+    expect(mockedAxios.get).not.toHaveBeenCalled();
+    expect(mockedAxios.patch).not.toHaveBeenCalled();
+  });
+
+  it("avisa qué ventas no se imprimen y no imprime ninguna si una de la selección está bloqueada", async () => {
+    useFixtureOrders([
+      { ...ORDERS[0], commercialStage: "SALE", commercialStockState: "DEFERRED", externalSource: null, unitAssignmentStatus: "NONE", stockVersion: 0 },
+      { ...ORDERS[1], commercialStage: "SALE", commercialStockState: "DEFERRED", externalSource: null, unitAssignmentStatus: "NONE", stockVersion: 0 },
+    ]);
+    render(<VentasPage />);
+    const rows = [await screen.findByText("ORD-001"), await screen.findByText("ORD-002")].map((el) => el.closest("tr") as HTMLElement);
+    for (const row of rows) fireEvent.click(within(row).getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: /Imprimir seleccionados \(2\)/ }));
+    expect(toast.error).toHaveBeenCalledWith("No se pueden imprimir 2 venta(s) (ORD-002, ORD-001): su stock aún no está reservado. Márcalas como Preparado con «Cambiar estado» y luego imprime las etiquetas.");
     expect(mockedAxios.get).not.toHaveBeenCalled();
     expect(mockedAxios.patch).not.toHaveBeenCalled();
   });
