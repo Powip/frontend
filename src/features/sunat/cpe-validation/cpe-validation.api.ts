@@ -27,15 +27,23 @@ export interface UpsertCpeValidationCredentialRequest {
 const base = () => `${API.sunat}/api/v1/cpe-validation`;
 const id = (value: string) => encodeURIComponent(value);
 
-export async function getCpeValidationAccessApi(signal?: AbortSignal): Promise<CpeValidationAccess> {
+export async function getCpeValidationAccessApi(
+  signal?: AbortSignal,
+): Promise<CpeValidationAccess> {
   const { data } = await axiosAuth.get<CpeValidationAccess>(`${base()}/access`, { signal });
   return data;
 }
 
 /** `null` si el RUC todavía no tiene credenciales (404 de ms-sunat). */
-export async function getCpeValidationCredentialApi(sunatProfileId: string, signal?: AbortSignal): Promise<CpeValidationCredential | null> {
+export async function getCpeValidationCredentialApi(
+  sunatProfileId: string,
+  signal?: AbortSignal,
+): Promise<CpeValidationCredential | null> {
   try {
-    const { data } = await axiosAuth.get<CpeValidationCredential>(`${base()}/sunat-profiles/${id(sunatProfileId)}/credentials`, { signal });
+    const { data } = await axiosAuth.get<CpeValidationCredential>(
+      `${base()}/sunat-profiles/${id(sunatProfileId)}/credentials`,
+      { signal },
+    );
     return data;
   } catch (error) {
     if ((error as { response?: { status?: number } })?.response?.status === 404) return null;
@@ -43,8 +51,14 @@ export async function getCpeValidationCredentialApi(sunatProfileId: string, sign
   }
 }
 
-export async function upsertCpeValidationCredentialApi(sunatProfileId: string, body: UpsertCpeValidationCredentialRequest): Promise<CpeValidationCredential> {
-  const { data } = await axiosAuth.put<CpeValidationCredential>(`${base()}/sunat-profiles/${id(sunatProfileId)}/credentials`, body);
+export async function upsertCpeValidationCredentialApi(
+  sunatProfileId: string,
+  body: UpsertCpeValidationCredentialRequest,
+): Promise<CpeValidationCredential> {
+  const { data } = await axiosAuth.put<CpeValidationCredential>(
+    `${base()}/sunat-profiles/${id(sunatProfileId)}/credentials`,
+    body,
+  );
   return data;
 }
 
@@ -54,16 +68,21 @@ export async function deleteCpeValidationCredentialApi(sunatProfileId: string): 
 
 /** Mensaje claro para los errores de estas llamadas. */
 export function cpeValidationErrorMessage(error: unknown, fallback: string): string {
-  const response = (error as { response?: { status?: number; data?: { code?: string } } } | null)?.response;
-  if (!response) return "No hubo respuesta del servidor de facturación. Revisa tu conexión e inténtalo de nuevo.";
+  const response = (error as { response?: { status?: number; data?: { code?: string } } } | null)
+    ?.response;
+  if (!response)
+    return "No hubo respuesta del servidor de facturación. Revisa tu conexión e inténtalo de nuevo.";
   switch (response.data?.code) {
     case "SUNAT_PROFILE_NOT_FOUND":
       return "No se encontró el RUC emisor. Actualiza la página.";
     default:
       break;
   }
-  if (response.status === 400) return "Revisa el client_id (hasta 100 caracteres) y el client_secret (hasta 500).";
-  if (response.status === 401 || response.status === 403) return "Tu sesión no tiene permiso para esta acción. Vuelve a iniciar sesión.";
-  if (response.status !== undefined && response.status >= 500) return "El servicio de facturación tuvo un error. Inténtalo de nuevo en unos minutos.";
+  if (response.status === 400)
+    return "Revisa el client_id (hasta 100 caracteres) y el client_secret (hasta 500).";
+  if (response.status === 401 || response.status === 403)
+    return "Tu sesión no tiene permiso para esta acción. Vuelve a iniciar sesión.";
+  if (response.status !== undefined && response.status >= 500)
+    return "El servicio de facturación tuvo un error. Inténtalo de nuevo en unos minutos.";
   return fallback;
 }

@@ -8,8 +8,10 @@ import { getCpeValidationAccessApi, getCpeValidationCredentialApi } from "./cpe-
 
 export const cpeValidationKeys = {
   all: ["cpe-validation"] as const,
-  access: (companyId: string, userId: string) => [...cpeValidationKeys.all, "access", companyId, userId] as const,
-  credential: (companyId: string, sunatProfileId: string) => [...cpeValidationKeys.all, "credential", companyId, sunatProfileId] as const,
+  access: (companyId: string, userId: string) =>
+    [...cpeValidationKeys.all, "access", companyId, userId] as const,
+  credential: (companyId: string, sunatProfileId: string) =>
+    [...cpeValidationKeys.all, "credential", companyId, sunatProfileId] as const,
 };
 
 function useIds() {

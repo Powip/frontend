@@ -278,11 +278,11 @@ export function GuiasTab({ comprobanteRows, issuer }: GuiasTabProps) {
                           <div className="text-[11px] text-muted-foreground">{GRE_MODE_LABEL[advice.transportMode]}</div>
                         </TableCell>
                         <TableCell className="max-w-[16rem] text-xs">{advice.payload.destination?.address ?? "—"}</TableCell>
-                        <TableCell className="max-w-[16rem]">
+                        <TableCell className="min-w-[14rem] max-w-[16rem] whitespace-normal">
                           <Badge variant="outline" className={`border-transparent font-semibold ${GRE_STATUS_CLASS[advice.status]}`}>
                             {GRE_STATUS_LABEL[advice.status]}
                           </Badge>
-                          {detail ? <p className="mt-1 text-[11px] text-muted-foreground">{detail}</p> : null}
+                          {detail ? <p className="mt-1 whitespace-normal break-words text-[11px] leading-snug text-muted-foreground">{detail}</p> : null}
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-wrap items-center justify-end gap-1">
