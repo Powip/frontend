@@ -196,11 +196,15 @@ const numeroEs = (n: number) => String(Number(n.toFixed(2))).replace(".", ",");
 const COSTO_VENTA_VERDE = 0.11;
 const COSTO_VENTA_AMBAR = 0.14;
 
-/** Costo de publicidad por venta ÷ ticket promedio (0..1); null si falta alguno o es 0. */
+/**
+ * Costo de publicidad por venta ÷ ticket promedio (0..1); null si falta alguno o es 0. Va redondeada a 1 decimal en %
+ * (la precisión con que se muestra): el nivel y el texto salen del mismo valor y el ruido de coma flotante de dividir
+ * dos cocientes no empuja un 11 % exacto a verde ni un 14 % exacto a rojo.
+ */
 function parteDelTicket(costoPorVenta: number | null, ticket: number | null): number | null {
   if (costoPorVenta === null || ticket === null) return null;
   if (!(costoPorVenta > 0) || !(ticket > 0)) return null;
-  return costoPorVenta / ticket;
+  return Math.round((costoPorVenta / ticket) * 1000) / 1000;
 }
 
 function nivelCostoPorVenta(parte: number | null): Nivel {

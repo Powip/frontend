@@ -428,11 +428,12 @@ const venta = (id: string, total: number, costo: number, precioLista?: number): 
 
 function renderSemaforo(
   pedidos: PedidoAdmin[],
-  opciones: { publicidad?: number; metaMargenPct?: number | null } = {},
+  opciones: { publicidad?: number; metaMargenPct?: number | null; gastos?: IGastoOperativo[] } = {},
 ) {
   mockComparados.mockReturnValue({
     actual: datos("2026-11-01", "2026-11-30", pedidos, {
       publicidad: opciones.publicidad ? publicidadOk(opciones.publicidad) : undefined,
+      gastos: opciones.gastos,
     }),
     anterior: datos("2026-10-01", "2026-10-31", []),
     rangoAnterior: RANGO_ANTERIOR,
@@ -532,6 +533,37 @@ describe("Semáforo contra entrega: costo de publicidad por venta", () => {
     ).toBeInTheDocument();
   });
 
+  it.each([
+    // El % se redondea a 1 decimal, que es lo que se muestra: el nivel sale del mismo valor que el texto.
+    ["10,96 % se ve «11 %» y es ámbar, no verde", 109.6, "S/ 110", "· 11 % del ticket", "Atención"],
+    ["14,04 % se ve «14 %» y es ámbar, no rojo", 140.4, "S/ 140", "· 14 % del ticket", "Atención"],
+    ["10,94 % se ve «10,9 %» y es verde", 109.4, "S/ 109", "· 10,9 % del ticket", "Bien"],
+    ["14,06 % se ve «14,1 %» y es rojo", 140.6, "S/ 141", "· 14,1 % del ticket", "Alerta"],
+  ])("el nivel y el texto salen del mismo valor redondeado: %s", (_caso, publicidad, soles, extra, etiqueta) => {
+    renderSemaforo([venta("a", 1000, 500)], { publicidad });
+    const fila = indicador("Costo de publicidad por venta");
+    expect(within(fila).getByText(soles)).toBeInTheDocument();
+    expect(within(fila).getByText(extra)).toBeInTheDocument();
+    expect(within(fila).getByText(etiqueta)).toBeInTheDocument();
+  });
+
+  it.each([
+    // Con 3 pedidos, (publicidad ÷ 3) ÷ (ventas ÷ 3) da 0,10999… y 0,14000…04: sin redondear, el 11 % exacto caía en
+    // verde y el 14 % exacto en rojo.
+    ["11 % exacto con 3 pedidos", [100, 100, 200], 44, "· 11 % del ticket"],
+    ["14 % exacto con 3 pedidos", [300, 300, 370], 135.8, "· 14 % del ticket"],
+  ])("sin ruido de coma flotante en los bordes: %s", (_caso, totales, publicidad, extra) => {
+    renderSemaforo(
+      totales.map((total, i) => venta(`v${i}`, total, 1)),
+      { publicidad },
+    );
+    const fila = indicador("Costo de publicidad por venta");
+    expect(within(fila).getByText(extra)).toBeInTheDocument();
+    expect(within(fila).getByText("Atención")).toBeInTheDocument();
+    expect(within(fila).queryByText("Bien")).not.toBeInTheDocument();
+    expect(within(fila).queryByText("Alerta")).not.toBeInTheDocument();
+  });
+
   it("reparte la publicidad entre los pedidos y la compara con el ticket promedio", () => {
     // 200 ÷ 2 pedidos = S/ 100 por venta; ticket promedio S/ 500 → 20 %.
     renderSemaforo([venta("a", 500, 100), venta("b", 500, 100)], { publicidad: 200 });
@@ -597,6 +629,17 @@ describe("Semáforo contra entrega: costos dudosos", () => {
   it("con menos del 10 % de ventas dudosas el margen en rojo sigue en rojo", () => {
     // 11 ventas con costo, 1 dudosa (9,1 %): margen (1.100 − 100 − 10 × 95) ÷ 1.100 = 4,5 % → rojo.
     renderSemaforo(conDudosa(10, 95));
+    const fila = indicador("Margen operativo");
+    expect(within(fila).getByText("Alerta")).toBeInTheDocument();
+    expect(within(fila).queryByText("Revisar costos")).not.toBeInTheDocument();
+    expect(within(fila).queryByText(AYUDA)).not.toBeInTheDocument();
+    expect(within(fila).queryByRole("link", { name: "Ir a Productos →" })).not.toBeInTheDocument();
+  });
+
+  it("sin ventas con costo no hay dudosos: el margen en rojo sigue en rojo", () => {
+    // Todas las ventas sin costo cargado (0 ventas con costo, 0 dudosas) y el margen en rojo por los gastos fijos:
+    // sin la guarda de «ventas con costo > 0», 0 × 10 ≥ 0 activaría «Revisar costos».
+    renderSemaforo([venta("a", 1000, 0), venta("b", 1000, 0)], { gastos: [gasto({ monto: 3000 })] });
     const fila = indicador("Margen operativo");
     expect(within(fila).getByText("Alerta")).toBeInTheDocument();
     expect(within(fila).queryByText("Revisar costos")).not.toBeInTheDocument();
