@@ -1,4 +1,5 @@
-import { createClient } from "@/utils/supabase/server";
+// FEAT-23 T16: service role (el rol anon ya no tiene permisos en public).
+import { createAdminClient as createClient } from "@/utils/supabase/admin";
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
