@@ -68,6 +68,7 @@ import {
   useTaxDocumentWhatsAppAvailability,
 } from "@/features/sunat/sunat-document/hooks/use-tax-document-whatsapp";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
+import { documentNumberOf, grandTotalOf } from "@/features/sunat/sunat-document/utils/prepayments";
 import {
   computeTaxDocumentKpis,
   filterRowsByIssuerRuc,
@@ -905,6 +906,16 @@ export function TaxDocumentsTab({
                           data-testid="numero-comprobante"
                         >
                           {getNumeroComprobanteEmitido(row)}
+                          {row.prepayments?.map((prepayment) => (
+                            <div
+                              key={prepayment.id}
+                              className="text-[10px] text-muted-foreground"
+                              data-testid="anticipo-comprobante"
+                            >
+                              Anticipo {documentNumberOf(prepayment)} · S/{" "}
+                              {grandTotalOf(prepayment).toFixed(2)}
+                            </div>
+                          ))}
                         </TableCell>
 
                         <TableCell>

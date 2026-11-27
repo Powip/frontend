@@ -58,5 +58,16 @@ export function computeTaxDocumentKpis(rows: TaxDocumentRow[], now = new Date())
     return total + Number(documentTotal ?? row.sale.grandTotal);
   }, 0);
 
-  return { emitidosHoy, pendientes, rechazados, facturadoMes };
+  // Anticipos are billed when issued. The final comprobante stores its total
+  // net of them, so adding both counts the sale once.
+  const prepaidMes = rows
+    .flatMap((row) => row.prepayments ?? [])
+    .filter(
+      (document) =>
+        (document.cdrStatus === "ACCEPTED" || document.cdrStatus === "ACCEPTED_WITH_OBSERVATION") &&
+        isSameMonth(new Date(document.createdAt)),
+    )
+    .reduce((total, document) => total + Number(document.taxDocumentPayload.totals.grandTotal), 0);
+
+  return { emitidosHoy, pendientes, rechazados, facturadoMes: facturadoMes + prepaidMes };
 }

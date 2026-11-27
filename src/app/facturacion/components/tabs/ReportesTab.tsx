@@ -14,13 +14,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useSunatDocumentPdf } from "@/features/sunat/sunat-document/hooks/use-sunat-document-pdf";
-import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
-import { filterRowsByIssuerRuc } from "@/features/sunat/sunat-document/utils/tax-document-kpis";
-import type { SunatProfile } from "@/features/sunat/sunat-profile/models/sunat-profile";
 import { useDespatchAdvicesReport } from "@/features/sunat/despatch-advice/hooks/use-despatch-advices";
 import type { DespatchAdvice } from "@/features/sunat/despatch-advice/types/despatch-advice.types";
-import { GRE_REASON_LABEL, GRE_STATUS_LABEL } from "@/features/sunat/despatch-advice/utils/gre-form";
+import {
+  GRE_REASON_LABEL,
+  GRE_STATUS_LABEL,
+} from "@/features/sunat/despatch-advice/utils/gre-form";
+import { useSunatDocumentPdf } from "@/features/sunat/sunat-document/hooks/use-sunat-document-pdf";
+import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
+import {
+  expandPrepaymentRows,
+  reportAmountsOf,
+} from "@/features/sunat/sunat-document/utils/prepayment-report";
+import { filterRowsByIssuerRuc } from "@/features/sunat/sunat-document/utils/tax-document-kpis";
+import type { SunatProfile } from "@/features/sunat/sunat-profile/models/sunat-profile";
 import type { Nota } from "@/types/facturacion";
 import { downloadFile } from "@/utils/http/download-file";
 
@@ -212,7 +219,18 @@ function getReporteGuias(allGuias: DespatchAdvice[], scope: IssuerScope): Report
   return {
     title: `Registro de Guías de Remisión${scope.title}`,
     filename: `powip_guias_remision${scope.filename}`,
-    headers: ["Fecha", "N° Guía", "RUC emisor", "Motivo", "Referencia", "Destinatario", "Destino", "Ubigeo destino", "Estado SUNAT", "Código SUNAT"],
+    headers: [
+      "Fecha",
+      "N° Guía",
+      "RUC emisor",
+      "Motivo",
+      "Referencia",
+      "Destinatario",
+      "Destino",
+      "Ubigeo destino",
+      "Estado SUNAT",
+      "Código SUNAT",
+    ],
     rows: guias.map((guia) => [
       isoDay(guia.issueDate),
       guia.number,
@@ -241,7 +259,12 @@ export function ReportesTab({
     variables: downloadingDocumentId,
   } = useSunatDocumentPdf();
 
-  const aceptados = filterRowsByIssuerRuc(comprobanteRows, issuer?.ruc).filter(
+  // Each anticipo is its own comprobante: one line per anticipo, and the final
+  // one with its net amounts, so the sale is counted once.
+  const aceptados = filterRowsByIssuerRuc(
+    expandPrepaymentRows(comprobanteRows),
+    issuer?.ruc,
+  ).filter(
     (row) =>
       row.taxDocument?.cdrStatus === "ACCEPTED" ||
       row.taxDocument?.cdrStatus === "ACCEPTED_WITH_OBSERVATION",
@@ -284,9 +307,7 @@ export function ReportesTab({
           "Estado",
         ],
         rows: aceptados.map((row) => {
-          const total = Number(row.sale.grandTotal);
-          const baseImponible = total / 1.18;
-          const igv = total - baseImponible;
+          const { total, baseImponible, igv } = reportAmountsOf(row);
 
           return [
             ...issuerCell(row),
@@ -322,9 +343,7 @@ export function ReportesTab({
           "Importe Total",
         ],
         rows: aceptados.map((row) => {
-          const total = Number(row.sale.grandTotal);
-          const baseImponible = total / 1.18;
-          const igv = total - baseImponible;
+          const { total, baseImponible, igv } = reportAmountsOf(row);
           const [serie = "", numero = ""] = (getFullNumber(row) || "-").split("-");
           const tipo = row.taxDocument?.taxDocumentType || "03";
 
@@ -348,15 +367,7 @@ export function ReportesTab({
     return {
       title: "Registro de Notas de Crédito y Débito",
       filename: "powip_notas_credito",
-      headers: [
-        "Fecha",
-        "N° Nota",
-        "Comprobante Original",
-        "Cliente",
-        "Motivo",
-        "Monto",
-        "Estado",
-      ],
+      headers: ["Fecha", "N° Nota", "Comprobante Original", "Cliente", "Motivo", "Monto", "Estado"],
       rows: notas.map((nota) => [
         nota.fecha,
         nota.num,
@@ -371,13 +382,21 @@ export function ReportesTab({
 
   const handleDescargar = (key: ReporteKey, tipo: DownloadType) => {
     if (key === "guias" && !guiasReport.data) {
-      toast.error(guiasReport.isError ? "No se pudieron cargar las guías de remisión. Inténtalo de nuevo." : "Todavía se están cargando las guías de remisión.");
+      toast.error(
+        guiasReport.isError
+          ? "No se pudieron cargar las guías de remisión. Inténtalo de nuevo."
+          : "Todavía se están cargando las guías de remisión.",
+      );
       if (guiasReport.isError) void guiasReport.refetch();
       return;
     }
     const reporte =
       key === "guias"
-        ? getReporteGuias(guiasReport.data ?? [], { ruc: issuer?.ruc, title: issuerTitle, filename: issuerFilename })
+        ? getReporteGuias(guiasReport.data ?? [], {
+            ruc: issuer?.ruc,
+            title: issuerTitle,
+            filename: issuerFilename,
+          })
         : getReporte(key);
 
     if (!reporte.rows.length) {
@@ -544,7 +563,7 @@ export function ReportesTab({
                       isDownloadingPdf && downloadingDocumentId === taxDocument?.id;
 
                     return (
-                      <TableRow key={row.sale.id}>
+                      <TableRow key={taxDocument?.id ?? row.sale.id}>
                         <TableCell className="whitespace-nowrap text-xs">
                           {new Date(row.sale.createdAt).toLocaleDateString("es-PE")}
                         </TableCell>
@@ -554,7 +573,7 @@ export function ReportesTab({
                         <TableCell>{row.sale.customer.fullName}</TableCell>
 
                         <TableCell className="text-right font-bold">
-                          S/ {Number(row.sale.grandTotal).toFixed(2)}
+                          S/ {reportAmountsOf(row).total.toFixed(2)}
                         </TableCell>
 
                         <TableCell className="text-right">
