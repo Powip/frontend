@@ -138,7 +138,7 @@ export default function ResumenAnualPage() {
   const actual = useResultadosAnuales(anio);
   // Año a la fecha contra el año anterior a la misma fecha.
   const anterior = useResultadosAnuales(anio - 1, { hastaDia: sumarMeses(actual.hasta, -12) });
-  const [metas, setMetas] = useMetasAnuales(companyId, anio);
+  const [metas, setMetas, estadoMetas] = useMetasAnuales(companyId, anio);
 
   const finAnio = aDiaKey(anio, 12, 31);
   const diasAnio = diasEntre(aDiaKey(anio, 1, 1), finAnio);
@@ -250,6 +250,7 @@ export default function ResumenAnualPage() {
           anio={anio}
           metas={metas}
           setMetas={setMetas}
+          estado={estadoMetas}
           total={total}
           proyeccion={proyeccion}
           anioCerrado={anioCerrado}
@@ -519,6 +520,7 @@ function MetasCard({
   anio,
   metas,
   setMetas,
+  estado,
   total,
   proyeccion,
   anioCerrado,
@@ -526,6 +528,7 @@ function MetasCard({
   anio: number;
   metas: MetasAnuales;
   setMetas: (metas: MetasAnuales) => void;
+  estado: { cargando: boolean; guardando: boolean; error: unknown };
   total: Resultados;
   proyeccion: { ventas: number | null; utilidad: number | null };
   anioCerrado: boolean;
@@ -557,9 +560,12 @@ function MetasCard({
   return (
     <PanelCard
       titulo={`Metas ${anio}`}
-      subtitulo="Se guardan solo en este navegador. Un campo vacío es «sin meta»."
+      subtitulo="Las ve todo el equipo con acceso a Finanzas. Un campo vacío es «sin meta»."
       acciones={
-        !form && (
+        // Sin las metas cargadas no se edita: guardar el formulario vacío borraría las del servidor.
+        !form &&
+        !estado.cargando &&
+        !estado.error && (
           <button type="button" className={claseBotonSecundario} onClick={abrir}>
             <Pencil className="h-3.5 w-3.5" aria-hidden />
             Editar metas
@@ -567,6 +573,11 @@ function MetasCard({
         )
       }
     >
+      {!!estado.error && !form && (
+        <p role="alert" className="mb-2 text-xs text-pc-bad">
+          No se pudieron leer las metas. Recarga la página para editarlas.
+        </p>
+      )}
       {form ? (
         <form onSubmit={guardar} className="space-y-3" aria-label={`Editar metas ${anio}`}>
           <CampoMeta

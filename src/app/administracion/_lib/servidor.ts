@@ -46,7 +46,7 @@ export function resultadosVacios(desde: DiaKey, hasta: DiaKey): ResultadosAdmini
     porDiaCanal: [],
     porProducto: [],
     calidad: { entregasSinHistorial: 0 },
-    enCurso: { pedidos: 0, adelantos: { pedidos: 0, monto: 0 } },
+    enCurso: { pedidos: 0, monto: 0, adelantos: { pedidos: 0, monto: 0 } },
   };
 }
 

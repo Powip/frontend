@@ -1,22 +1,24 @@
 "use client";
 
 /**
- * Cuentas por cobrar y pagar (FEAT-34: C7, M8). Fuera del menú hasta tener backend (D6).
+ * Cuentas por cobrar y pagar (FEAT-34: C7, M8, Fase 3). Volvió al menú (Caja) al tener respaldo en el servidor.
  *
  * Por cobrar:
  * - Saldo en calle: pedidos hoy en tránsito (ASIGNADO_A_GUIA + EN_ENVIO + DESPACHADO, últimos 90 días) menos lo ya
  *   pagado, por courier (`usePedidosEnTransito`, calculado en ms-ventas; acá se juntan las grafías de un mismo
  *   courier). Antes solo DESPACHADO (~25 % del saldo real).
  * - Cobros confirmados que el courier todavía no liquidó (`courierSettlementBalances`, ms-courier).
- * - Otras cuentas registradas a mano (solo en este navegador).
- * Por pagar: solo lo registrado a mano (solo en este navegador).
+ * - Otras cuentas registradas a mano (en el servidor: las ve todo el equipo).
+ * Por pagar:
+ * - Compras de inventario pendientes de pago (`/administracion/compras`, ms-logistics; Fase 3: antes no se veían).
+ * - Lo registrado a mano.
  *
- * Es una foto de hoy: no depende del periodo elegido. Ya no hay «vencidas» ni «próximas»: el vencimiento es texto
- * libre y esas secciones salían siempre vacías.
+ * Es una foto de hoy: no depende del periodo elegido. El vencimiento de lo manual es una fecha (Fase 3): lo pendiente
+ * con fecha pasada se marca «Vencida».
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { Check, Plus } from "lucide-react";
+import { Check, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { type FormEvent, type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -40,21 +42,29 @@ import {
   PanelSkeleton,
   SIN_DATO,
 } from "../_components/ui";
+import type { CuentaServidor, EstadoCompra } from "@/interfaces/IAdministracion";
+import { textoDia } from "../_lib/capitalStorage";
 import { courierSettlementBalances } from "../_lib/courierSettlementBalances";
 import {
-  type CuentaManual,
+  cuentasAbiertas,
+  cuentasSaldadas,
+  estaVencida,
   saldoEnCallePorCourier,
   totalCuentas,
-  useCuentasHistorial,
-  useCuentasManualCobrar,
-  useCuentasManualPagar,
 } from "../_lib/cuentasStorage";
-import { etiquetaMes, partes } from "../_lib/periodo";
+import { mensajeError, useComprasAdministracion, useCuentasServidor } from "../_lib/datosServidor";
+import { type DiaKey, esDiaKey, etiquetaMes, partes } from "../_lib/periodo";
 import { DIAS_EN_TRANSITO, useAdminContexto, usePedidosEnTransito } from "../_lib/useResultados";
 
 type TipoCuenta = "cobrar" | "pagar";
 
-const FORM_VACIO = { tipo: "pagar" as TipoCuenta, concepto: "", descripcion: "", monto: "", vencimiento: "" };
+const FORM_VACIO = { tipo: "pagar" as TipoCuenta, concepto: "", descripcion: "", monto: "", vence: "" };
+
+const ESTADO_COMPRA: Record<EstadoCompra, string> = {
+  PEDIDA: "Pedida",
+  RECIBIDA_PARCIAL: "Recibida en parte",
+  RECIBIDA: "Recibida",
+};
 
 export default function CuentasPage() {
   const { auth } = useAuth();
@@ -74,30 +84,38 @@ export default function CuentasPage() {
   const porLiquidarPen = balances.filter((b) => b.currency === "PEN").reduce((s, b) => s + b.remainingAmount, 0);
   const otrasMonedas = [...new Set(balances.filter((b) => b.currency !== "PEN").map((b) => b.currency))];
 
-  const [cobrarManual, setCobrarManual] = useCuentasManualCobrar(companyId);
-  const [pagarManual, setPagarManual] = useCuentasManualPagar(companyId);
-  const [historial, setHistorial] = useCuentasHistorial(companyId);
+  // Las compras pendientes de pago son una foto de hoy: el rango solo es el que pide el endpoint.
+  const compras = useComprasAdministracion(hoy, hoy);
+  const comprasPorPagar = compras.data?.porPagar;
+
+  const { query: cuentasQuery, crear, actualizar, borrar } = useCuentasServidor();
+  const cobrarManual = useMemo(() => cuentasAbiertas(cuentasQuery.data, "cobrar"), [cuentasQuery.data]);
+  const pagarManual = useMemo(() => cuentasAbiertas(cuentasQuery.data, "pagar"), [cuentasQuery.data]);
+  const historial = useMemo(() => cuentasSaldadas(cuentasQuery.data), [cuentasQuery.data]);
   const [vista, setVista] = useState<"abiertas" | "historial">("abiertas");
   const [form, setForm] = useState<typeof FORM_VACIO | null>(null);
 
   const porCourier = useMemo(() => saldoEnCallePorCourier(transito.porCourier), [transito.porCourier]);
   const totalCobrarManual = totalCuentas(cobrarManual);
-  const totalPagar = totalCuentas(pagarManual);
+  const totalPagarManual = totalCuentas(pagarManual);
+  const totalPagar = totalPagarManual + (comprasPorPagar?.monto ?? 0);
 
-  function marcar(tipo: TipoCuenta, cuenta: CuentaManual) {
-    if (tipo === "cobrar") setCobrarManual((prev) => prev.filter((c) => c.id !== cuenta.id));
-    else setPagarManual((prev) => prev.filter((c) => c.id !== cuenta.id));
-    setHistorial((prev) => [
+  function marcar(cuenta: CuentaServidor) {
+    actualizar.mutate(
+      { id: cuenta.id, cambios: { saldadaEn: hoy } },
       {
-        id: `h-${Date.now()}`,
-        mes: hoy.slice(0, 7),
-        tipo: tipo === "cobrar" ? "ingreso" : "egreso",
-        concepto: cuenta.concepto,
-        monto: cuenta.monto,
+        onSuccess: () =>
+          toast.success(`${cuenta.lado === "cobrar" ? "Cobrado" : "Pagado"}: ${formatSolesDecimales(cuenta.monto)}`),
+        onError: (error) => toast.error(mensajeError(error, "No se pudo marcar la cuenta")),
       },
-      ...prev,
-    ]);
-    toast.success(`${tipo === "cobrar" ? "Cobrado" : "Pagado"}: ${formatSolesDecimales(cuenta.monto)}`);
+    );
+  }
+
+  function eliminar(cuenta: CuentaServidor) {
+    borrar.mutate(cuenta.id, {
+      onSuccess: () => toast.success(`Cuenta eliminada: ${cuenta.concepto}`),
+      onError: (error) => toast.error(mensajeError(error, "No se pudo eliminar la cuenta")),
+    });
   }
 
   function agregar(evento: FormEvent) {
@@ -108,22 +126,30 @@ export default function CuentasPage() {
       toast.error("Completa el concepto y un monto mayor a 0");
       return;
     }
-    const cuenta: CuentaManual = {
-      id: `m-${Date.now()}`,
-      concepto: form.concepto.trim(),
-      descripcion: form.descripcion.trim(),
-      monto,
-      vencimiento: form.vencimiento.trim(),
-    };
-    if (form.tipo === "cobrar") setCobrarManual((prev) => [...prev, cuenta]);
-    else setPagarManual((prev) => [...prev, cuenta]);
-    setForm(null);
-    toast.success("Cuenta agregada en este navegador");
+    if (form.vence && !esDiaKey(form.vence)) {
+      toast.error("La fecha de vencimiento no es válida");
+      return;
+    }
+    crear.mutate(
+      {
+        lado: form.tipo,
+        concepto: form.concepto.trim(),
+        descripcion: form.descripcion.trim(),
+        monto: Math.round(monto * 100) / 100,
+        ...(form.vence ? { vence: form.vence } : {}),
+      },
+      {
+        onSuccess: () => {
+          setForm(null);
+          toast.success("Cuenta agregada");
+        },
+        onError: (error) => toast.error(mensajeError(error, "No se pudo agregar la cuenta")),
+      },
+    );
   }
 
-  const historialOrdenado = useMemo(() => [...historial].sort((a, b) => b.mes.localeCompare(a.mes)), [historial]);
-  const cobrado = historial.filter((m) => m.tipo === "ingreso").reduce((s, m) => s + m.monto, 0);
-  const pagado = historial.filter((m) => m.tipo === "egreso").reduce((s, m) => s + m.monto, 0);
+  const cobrado = historial.filter((m) => m.lado === "cobrar").reduce((s, m) => s + m.monto, 0);
+  const pagado = historial.filter((m) => m.lado === "pagar").reduce((s, m) => s + m.monto, 0);
 
   return (
     <div className="space-y-3.5">
@@ -136,7 +162,16 @@ export default function CuentasPage() {
           label="En calle"
           loading={transito.cargando}
           value={formatSoles(transito.saldo)}
-          sub={`${formatNumber(transito.pedidos)} pedidos en tránsito, lo que falta cobrar`}
+          sub={
+            <>
+              {formatNumber(transito.pedidos)} pedidos en tránsito, lo que falta cobrar
+              <span className="block">
+                Con guía {formatSoles(transito.porEstado.ASIGNADO_A_GUIA.saldo)} · en envío{" "}
+                {formatSoles(transito.porEstado.EN_ENVIO.saldo)} · despachados{" "}
+                {formatSoles(transito.porEstado.DESPACHADO.saldo)}
+              </span>
+            </>
+          }
         />
         <KpiCard
           label="Courier por liquidar"
@@ -150,10 +185,20 @@ export default function CuentasPage() {
         />
         <KpiCard
           label="Otras por cobrar"
+          loading={cuentasQuery.isLoading}
           value={formatSoles(totalCobrarManual)}
-          sub="Registro manual de este navegador"
+          sub="Registro manual"
         />
-        <KpiCard label="Por pagar" value={formatSoles(totalPagar)} sub="Registro manual de este navegador" />
+        <KpiCard
+          label="Por pagar"
+          loading={cuentasQuery.isLoading || compras.isLoading}
+          value={formatSoles(totalPagar)}
+          sub={
+            compras.error
+              ? `Registro manual ${formatSoles(totalPagarManual)} · no se pudieron consultar las compras`
+              : `Compras de inventario ${formatSoles(comprasPorPagar?.monto ?? 0)} · registro manual ${formatSoles(totalPagarManual)}`
+          }
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[3fr_2fr]">
@@ -236,8 +281,62 @@ export default function CuentasPage() {
       </div>
 
       <PanelCard
+        titulo="Compras de inventario por pagar"
+        subtitulo="Compras registradas en Compras que todavía figuran como pendientes de pago (no dependen del periodo)."
+        acciones={
+          <Link href="/compras" className={claseBotonSecundario}>
+            Ver compras
+          </Link>
+        }
+      >
+        {compras.error ? (
+          <PanelError error={compras.error as Error} />
+        ) : compras.isLoading ? (
+          <PanelSkeleton variant="tabla" label="compras por pagar" />
+        ) : (
+          <AdminTable
+            caption="Compras de inventario pendientes de pago"
+            emptyMessage="No hay compras pendientes de pago"
+            maxHeight={320}
+            rows={comprasPorPagar?.lista ?? []}
+            getRowKey={(c) => c.id}
+            columns={[
+              { id: "numero", header: "Compra", align: "left", cell: (c) => c.numero, sortValue: (c) => c.numero },
+              {
+                id: "proveedor",
+                header: "Proveedor",
+                align: "left",
+                cell: (c) => c.proveedor || "Sin proveedor",
+                sortValue: (c) => c.proveedor ?? "",
+              },
+              { id: "estado", header: "Estado", align: "left", cell: (c) => ESTADO_COMPRA[c.estado] ?? c.estado },
+              {
+                id: "vence",
+                header: "Vence",
+                align: "left",
+                cell: (c) => (esDiaKey(c.vence) ? <TextoVence dia={c.vence} hoy={hoy} /> : SIN_DATO),
+                sortValue: (c) => c.vence ?? "9999",
+              },
+              { id: "monto", header: "Monto", cell: (c) => formatSolesDecimales(c.monto), sortValue: (c) => c.monto },
+            ]}
+            footer={
+              comprasPorPagar && comprasPorPagar.compras > 0
+                ? {
+                    numero: `${formatNumber(comprasPorPagar.compras)} compras`,
+                    monto: formatSolesDecimales(comprasPorPagar.monto),
+                  }
+                : undefined
+            }
+          />
+        )}
+        <p className="mt-2 text-[11px] text-pc-text-muted">
+          El monto es el total de la compra más sus gastos. Cuando la pagues, márcala como pagada en Compras.
+        </p>
+      </PanelCard>
+
+      <PanelCard
         titulo="Registro manual"
-        subtitulo="Cuentas que anotas a mano. Se guardan solo en este navegador: otro usuario u otra computadora no las ve."
+        subtitulo="Cuentas que anotas a mano (préstamos a terceros, deudas con proveedores fuera de Compras…). Las ve todo el equipo con acceso a Finanzas."
         acciones={
           <>
             <div role="group" aria-label="Ver cuentas" className="inline-flex rounded-lg border border-pc-border p-0.5">
@@ -261,7 +360,7 @@ export default function CuentasPage() {
                 </button>
               ))}
             </div>
-            {!form && (
+            {!form && cuentasQuery.isSuccess && (
               <button type="button" className={claseBotonPrimario} onClick={() => setForm({ ...FORM_VACIO })}>
                 <Plus className="h-3.5 w-3.5" aria-hidden />
                 Agregar cuenta
@@ -315,18 +414,18 @@ export default function CuentasPage() {
                 onChange={(e) => setForm({ ...form, monto: e.target.value })}
               />
             </Campo>
-            <Campo label="Vencimiento o nota" id="cuenta-vencimiento">
+            <Campo label="Vence" id="cuenta-vence">
               <input
-                id="cuenta-vencimiento"
-                placeholder="Ej: a fin de mes"
+                id="cuenta-vence"
+                type="date"
                 className={cn(claseInput, "w-full")}
-                value={form.vencimiento}
-                onChange={(e) => setForm({ ...form, vencimiento: e.target.value })}
+                value={form.vence}
+                onChange={(e) => setForm({ ...form, vence: e.target.value })}
               />
             </Campo>
             <div className="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-5">
-              <button type="submit" className={claseBotonPrimario}>
-                Guardar
+              <button type="submit" className={claseBotonPrimario} disabled={crear.isPending}>
+                {crear.isPending ? "Guardando…" : "Guardar"}
               </button>
               <button type="button" className={claseBotonSecundario} onClick={() => setForm(null)}>
                 Cancelar
@@ -335,21 +434,36 @@ export default function CuentasPage() {
           </form>
         )}
 
-        {vista === "abiertas" ? (
+        {cuentasQuery.error ? (
+          <PanelError error={cuentasQuery.error as Error} />
+        ) : cuentasQuery.isLoading ? (
+          <PanelSkeleton variant="tabla" label="cuentas" />
+        ) : vista === "abiertas" ? (
           <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
             <ListaCuentas
               titulo="Por cobrar"
               tipo="cobrar"
               cuentas={cobrarManual}
-              onMarcar={(c) => marcar("cobrar", c)}
+              hoy={hoy}
+              ocupado={actualizar.isPending || borrar.isPending}
+              onMarcar={marcar}
+              onEliminar={eliminar}
             />
-            <ListaCuentas titulo="Por pagar" tipo="pagar" cuentas={pagarManual} onMarcar={(c) => marcar("pagar", c)} />
+            <ListaCuentas
+              titulo="Por pagar"
+              tipo="pagar"
+              cuentas={pagarManual}
+              hoy={hoy}
+              ocupado={actualizar.isPending || borrar.isPending}
+              onMarcar={marcar}
+              onEliminar={eliminar}
+            />
           </div>
         ) : (
           <AdminTable
             caption="Historial de cuentas marcadas como cobradas o pagadas"
             emptyMessage="Todavía no marcaste ninguna cuenta como cobrada o pagada"
-            rows={historialOrdenado}
+            rows={historial}
             getRowKey={(m) => m.id}
             columns={[
               {
@@ -357,18 +471,18 @@ export default function CuentasPage() {
                 header: "Mes",
                 align: "left",
                 cell: (m) => {
-                  const [a, mes] = partes(`${m.mes}-01`);
+                  const [a, mes] = partes(m.saldadaEn as DiaKey);
                   return <span className="capitalize">{etiquetaMes(a, mes, true)}</span>;
                 },
-                sortValue: (m) => m.mes,
+                sortValue: (m) => m.saldadaEn ?? "",
               },
               {
                 id: "tipo",
                 header: "Tipo",
                 align: "left",
                 cell: (m) => (
-                  <NivelPill nivel={m.tipo === "ingreso" ? "verde" : "rojo"}>
-                    {m.tipo === "ingreso" ? "Cobrado" : "Pagado"}
+                  <NivelPill nivel={m.lado === "cobrar" ? "verde" : "rojo"}>
+                    {m.lado === "cobrar" ? "Cobrado" : "Pagado"}
                   </NivelPill>
                 ),
               },
@@ -377,12 +491,12 @@ export default function CuentasPage() {
                 id: "monto",
                 header: "Monto",
                 cell: (m) => (
-                  <span className={m.tipo === "ingreso" ? "text-pc-ok" : "text-pc-bad"}>
-                    {m.tipo === "ingreso" ? "+" : "−"}
+                  <span className={m.lado === "cobrar" ? "text-pc-ok" : "text-pc-bad"}>
+                    {m.lado === "cobrar" ? "+" : "−"}
                     {formatSolesDecimales(m.monto)}
                   </span>
                 ),
-                sortValue: (m) => (m.tipo === "ingreso" ? m.monto : -m.monto),
+                sortValue: (m) => (m.lado === "cobrar" ? m.monto : -m.monto),
               },
             ]}
             footer={{
@@ -408,16 +522,33 @@ function Campo({ label, id, children }: { label: string; id: string; children: R
   );
 }
 
+/** «Vence 5 dic 2026», o «Vencida · 20 nov 2026» si ya pasó. */
+function TextoVence({ dia, hoy }: { dia: DiaKey; hoy: string }) {
+  const vencida = dia < hoy;
+  return (
+    <span className={cn(vencida && "font-semibold text-pc-bad")}>
+      {vencida ? "Vencida · " : "Vence "}
+      {textoDia(dia)}
+    </span>
+  );
+}
+
 function ListaCuentas({
   titulo,
   tipo,
   cuentas,
+  hoy,
+  ocupado,
   onMarcar,
+  onEliminar,
 }: {
   titulo: string;
   tipo: TipoCuenta;
-  cuentas: CuentaManual[];
-  onMarcar: (cuenta: CuentaManual) => void;
+  cuentas: CuentaServidor[];
+  hoy: string;
+  ocupado: boolean;
+  onMarcar: (cuenta: CuentaServidor) => void;
+  onEliminar: (cuenta: CuentaServidor) => void;
 }) {
   return (
     <section aria-label={`${titulo} (registro manual)`} className="min-w-0">
@@ -432,13 +563,18 @@ function ListaCuentas({
           {cuentas.map((cuenta) => (
             <li
               key={cuenta.id}
-              className="flex items-center gap-3 rounded-xl border border-pc-border-soft px-3 py-2"
+              className={cn(
+                "flex items-center gap-3 rounded-xl border px-3 py-2",
+                estaVencida(cuenta, hoy) ? "border-pc-bad/40" : "border-pc-border-soft",
+              )}
             >
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-pc-text">{cuenta.concepto}</p>
-                {(cuenta.descripcion || cuenta.vencimiento) && (
+                {(cuenta.descripcion || cuenta.vence) && (
                   <p className="truncate text-xs text-pc-text-muted">
-                    {[cuenta.descripcion, cuenta.vencimiento].filter(Boolean).join(" · ")}
+                    {cuenta.descripcion}
+                    {cuenta.descripcion && esDiaKey(cuenta.vence) && " · "}
+                    {esDiaKey(cuenta.vence) && <TextoVence dia={cuenta.vence} hoy={hoy} />}
                   </p>
                 )}
               </div>
@@ -453,11 +589,21 @@ function ListaCuentas({
               <button
                 type="button"
                 className={claseBotonSecundario}
+                disabled={ocupado}
                 onClick={() => onMarcar(cuenta)}
                 aria-label={`Marcar ${cuenta.concepto} como ${tipo === "cobrar" ? "cobrada" : "pagada"}`}
               >
                 <Check className="h-3.5 w-3.5" aria-hidden />
                 {tipo === "cobrar" ? "Cobrado" : "Pagado"}
+              </button>
+              <button
+                type="button"
+                className={claseBotonSecundario}
+                disabled={ocupado}
+                onClick={() => onEliminar(cuenta)}
+                aria-label={`Eliminar ${cuenta.concepto}`}
+              >
+                <Trash2 className="h-3.5 w-3.5" aria-hidden />
               </button>
             </li>
           ))}

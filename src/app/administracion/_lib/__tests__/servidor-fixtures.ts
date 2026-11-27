@@ -155,6 +155,7 @@ export function servidorDePedidos(
     porProducto: productosDe(ventas),
     enCurso: {
       pedidos: enCurso.length,
+      monto: enCurso.reduce((s, p) => s + (Number(p.grandTotal) || 0), 0),
       adelantos: {
         pedidos: conAdelanto.length,
         monto: conAdelanto.reduce((s, p) => s + pagadoPedido(p), 0),

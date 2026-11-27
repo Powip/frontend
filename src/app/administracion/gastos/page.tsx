@@ -7,7 +7,9 @@
  *   cada gasto × días del periodo en su mes ÷ días del mes (D8). Antes se restaba el mes entero con «Hoy» o «Semana».
  * - La lista y el formulario trabajan sobre un mes elegido con selector de mes y año; arrancan en el mes del periodo
  *   (antes el formulario quedaba en el mes en que se abrió la pantalla y no había año).
- * - Compra de mercadería (INVERSION) va aparte: no entra al resultado, el costo ya se cuenta cuando se vende.
+ * - Compra de mercadería (INVERSION) va aparte: no entra al resultado, el costo ya se cuenta cuando se vende. Fase 3:
+ *   al lado se ven las compras de inventario pagadas en el mes (módulo Compras, `/administracion/compras`), que antes no
+ *   aparecían en ningún lado de Administración.
  * - Costo de lo vendido = `resultados.costoProducto`, con el aviso de ventas sin costo (C1).
  * - La publicidad conectada vive en la sección Publicidad; acá solo se muestra el total que entra al resultado.
  */
@@ -61,6 +63,7 @@ import {
   partes,
 } from "../_lib/periodo";
 import { CATEGORIAS_FIJAS, NOMBRE_CATEGORIA, prorratearGastos } from "../_lib/resultados";
+import { useComprasAdministracion } from "../_lib/datosServidor";
 import { notaFlete } from "../_lib/servidor";
 import { type DatosPeriodo, useAdminContexto, useResultadosPeriodo } from "../_lib/useResultados";
 
@@ -359,6 +362,7 @@ function ResumenDelMes({
   const tramo = mesesDelPeriodo(desde, hasta).find((t) => t.anio === anio && t.mes === mes);
   const fijosMes = CATEGORIAS_FIJAS.reduce((s, c) => s + delMes(c), 0);
   const nombreMes = MESES_LARGOS[mes - 1];
+  const compras = useComprasAdministracion(aDiaKey(anio, mes, 1), aDiaKey(anio, mes, diasDelMes(anio, mes)));
 
   const filas: { clave: string; etiqueta: string; monto: number; periodo: number; total?: boolean }[] = [
     ...CATEGORIAS_FIJAS.map((c) => ({
@@ -415,9 +419,18 @@ function ResumenDelMes({
           ))}
           <tr className="border-t border-pc-border text-pc-text-muted">
             <th scope="row" className="py-2 pl-1 text-left font-medium">
-              {NOMBRE_CATEGORIA.INVERSION}
+              {NOMBRE_CATEGORIA.INVERSION} cargada
             </th>
             <td className="py-2 text-right tabular-nums">{formatSoles(delMes("INVERSION"))}</td>
+            <td className="py-2 pr-1 text-right text-[11px]">No entra</td>
+          </tr>
+          <tr className="border-t border-pc-border-soft text-pc-text-muted">
+            <th scope="row" className="py-2 pl-1 text-left font-medium">
+              Compras de inventario pagadas (Compras)
+            </th>
+            <td className="py-2 text-right tabular-nums">
+              {compras.error ? "No se pudo leer" : compras.isLoading ? "…" : formatSoles(compras.data?.pagadas.monto ?? 0)}
+            </td>
             <td className="py-2 pr-1 text-right text-[11px]">No entra</td>
           </tr>
         </tbody>
@@ -429,7 +442,8 @@ function ResumenDelMes({
             : `Al periodo le tocan ${tramo.dias} de ${tramo.diasMes} días de ${nombreMes}: cada gasto del mes se multiplica por ${tramo.dias}/${tramo.diasMes}.`
           : `${mayuscula(nombreMes)} ${anio} no está dentro del periodo elegido (${etiquetaPeriodo(desde, hasta)}): no le toca nada.`}{" "}
         La compra de mercadería va aparte: no se resta en el resultado porque el costo del producto ya se cuenta cuando
-        se vende.
+        se vende. Sí sale de la caja: Flujo de caja descuenta las compras de inventario pagadas y lo cargado acá (no
+        cargues acá una compra que ya registraste en Compras).
       </p>
     </div>
   );

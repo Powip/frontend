@@ -8,9 +8,12 @@
  *
  * Ahora, mes a mes del año del periodo elegido (`useResultadosAnuales`):
  * - Entradas = ventas entregadas en el mes (por día de entrega; como si se cobraran ese mismo mes).
- * - Salidas = compra de mercadería (Gastos › categoría INVERSION del mes) + gastos fijos + publicidad
+ * - Salidas = compra de mercadería + gastos fijos + publicidad
  *   (`resultados.publicidad.total`: cuentas conectadas + Gastos › Publicidad) + envíos (flete por pedido, D9) +
  *   comisiones de canal.
+ * - Compra de mercadería (Fase 3) = compras de inventario PAGADAS del módulo Compras (`/administracion/compras`,
+ *   ms-logistics; mes del pago, sin él la fecha de compra; total + gastos de la compra) + lo cargado a mano en Gastos ›
+ *   «Compra de mercadería» (INVERSION). Antes solo lo de Gastos, que casi nadie carga: el flujo salía sin compras.
  * - No se resta el costo de producto: la compra de mercadería ya es esa salida (sería contarla dos veces).
  * - No incluye adelantos, lo que el courier todavía no liquidó, préstamos ni impuestos.
  */
@@ -33,6 +36,7 @@ import {
   PanelSkeleton,
   SIN_DATO,
 } from "../_components/ui";
+import { comprasPorMesDelAnio, useComprasDelAnio } from "../_lib/datosServidor";
 import { diasDelMes, diasEntre, etiquetaPeriodo, MESES_CORTOS, MESES_LARGOS, partes } from "../_lib/periodo";
 import type { EstadoPublicidad } from "../_lib/publicidad";
 import { notaFlete } from "../_lib/servidor";
@@ -55,8 +59,8 @@ interface FilaFlujo {
   conDatos: boolean;
 }
 
-/** Compra de mercadería cargada en Gastos para cada mes del año (monto completo del mes, sin repartir). */
-function comprasPorMes(gastos: IGastoOperativo[], anio: number) {
+/** Compra de mercadería cargada a mano en Gastos para cada mes del año (monto completo del mes, sin repartir). */
+function comprasEnGastosPorMes(gastos: IGastoOperativo[], anio: number) {
   const meses = Array<number>(12).fill(0);
   for (const gasto of gastos) {
     if (gasto.categoria !== "INVERSION" || Number(gasto.anio) !== anio) continue;
@@ -125,7 +129,13 @@ export default function FlujoDeCajaPage() {
   const anio = partes(toDate)[0];
   const datos = useResultadosAnuales(anio);
 
-  const compras = useMemo(() => comprasPorMes(datos.gastosCrudos ?? [], anio), [datos.gastosCrudos, anio]);
+  const comprasInventario = useComprasDelAnio(anio, hoy);
+  const inventarioPorMes = useMemo(
+    () => comprasPorMesDelAnio(comprasInventario.data, anio),
+    [comprasInventario.data, anio],
+  );
+  const gastosPorMes = useMemo(() => comprasEnGastosPorMes(datos.gastosCrudos ?? [], anio), [datos.gastosCrudos, anio]);
+  const compras = useMemo(() => inventarioPorMes.map((v, i) => v + gastosPorMes[i]), [inventarioPorMes, gastosPorMes]);
   const filas = armarFilas(datos.meses, compras, hoy);
   const medidas = filas.filter((f) => !f.futuro);
   const totales = medidas.reduce(
@@ -142,6 +152,11 @@ export default function FlujoDeCajaPage() {
     { entradas: 0, compra: 0, fijos: 0, publicidad: 0, envios: 0, comisiones: 0, salidas: 0, neto: 0 },
   );
   const anioFuturo = datos.hasta < datos.desde;
+  // Solo los meses medidos (los futuros no entran en el flujo).
+  const mesesMedidos = new Set(medidas.map((f) => f.mes));
+  const sumaMedida = (meses: number[]) => meses.reduce((s, v, i) => (mesesMedidos.has(i + 1) ? s + v : s), 0);
+  const compraInventario = sumaMedida(inventarioPorMes);
+  const compraGastos = sumaMedida(gastosPorMes);
 
   const rotulo = (
     <p className="text-xs text-pc-text-muted">
@@ -154,9 +169,9 @@ export default function FlujoDeCajaPage() {
     <Aviso tono="info" titulo="Flujo de caja estimado">
       <p>
         <b>Entradas</b>: las ventas entregadas en cada mes, como si se cobraran ese mismo mes. <b>Salidas</b>: la
-        compra de mercadería, los gastos fijos y la publicidad cargados en Gastos (más el consumo de las cuentas de
-        publicidad conectadas), los envíos (flete por pedido) y las comisiones de canal. El mes en curso se mide hasta
-        hoy.
+        compra de mercadería (las compras de inventario pagadas, en el mes del pago, más lo cargado en Gastos), los
+        gastos fijos y la publicidad cargados en Gastos (más el consumo de las cuentas de publicidad conectadas), los
+        envíos (flete por pedido) y las comisiones de canal. El mes en curso se mide hasta hoy.
       </p>
       <p className="mt-1">
         No se resta el costo de lo vendido: la compra de mercadería ya es esa salida y sería contarla dos veces. No
@@ -186,7 +201,7 @@ export default function FlujoDeCajaPage() {
     );
   }
 
-  if (datos.cargando) {
+  if (datos.cargando || comprasInventario.isLoading) {
     return (
       <div className="space-y-3.5">
         {rotulo}
@@ -248,11 +263,25 @@ export default function FlujoDeCajaPage() {
       {rotulo}
       {nota}
       <NotaPublicidad estado={datos.publicidad.estado} />
-      {sinCompras && (
-        <Aviso tono="warn" titulo={`No hay compras de mercadería cargadas en ${anio}`}>
-          Carga lo que le pagas a tus proveedores en Costos › Gastos y costos, categoría «Compra de mercadería», para
-          que el flujo lo descuente. Sin eso, el neto sale más alto de lo real.
+      {comprasInventario.error ? (
+        <Aviso tono="warn" titulo="No se pudieron leer las compras de inventario">
+          La compra de mercadería incluye solo lo cargado en Gastos: el neto puede salir más alto de lo real.
         </Aviso>
+      ) : (
+        sinCompras && (
+          <Aviso tono="warn" titulo={`No hay compras de mercadería en ${anio}`}>
+            No hay compras pagadas en Compras ni cargadas en Costos › Gastos y costos. Registra tus compras a
+            proveedores en Compras (y márcalas como pagadas) para que el flujo las descuente. Sin eso, el neto sale más
+            alto de lo real.
+          </Aviso>
+        )
+      )}
+      {compraInventario > 0 && compraGastos > 0 && (
+        <p className="text-xs text-pc-text-muted">
+          La compra de mercadería junta las compras de inventario ({formatSoles(compraInventario)}) y lo cargado en
+          Gastos ({formatSoles(compraGastos)}): si cargaste en Gastos una compra que también está en Compras, se cuenta
+          dos veces.
+        </p>
       )}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -274,7 +303,7 @@ export default function FlujoDeCajaPage() {
         <KpiCard
           label="Compra de mercadería"
           value={sinCompras ? SIN_DATO : formatSoles(totales.compra)}
-          sub="Lo cargado en Gastos › Compra de mercadería"
+          sub={`Compras de inventario ${formatSoles(compraInventario)} · cargado en Gastos ${formatSoles(compraGastos)}`}
         />
       </div>
 

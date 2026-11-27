@@ -275,6 +275,27 @@ describe("Resumen de Administración", () => {
     expect(within(adelantos).getByText(/^1 pedido ·/)).toBeInTheDocument();
   });
 
+  it("muestra lo vendido en el periodo que todavía no se entregó (ventas en curso), aparte de las ventas", () => {
+    escenarioCompleto();
+    renderPagina();
+    // En curso: c (300) + c2 (300) + d incompleto (80); no los anulados ni los leads.
+    const enCurso = seccion("Ventas en curso (sin entregar)");
+    expect(within(enCurso).getByText(formatSoles(680))).toBeInTheDocument();
+    expect(within(enCurso).getByText(/^3 pedidos creados en el periodo/)).toBeInTheDocument();
+    expect(within(enCurso).getByText(/No suman a las ventas ni a la utilidad/)).toBeInTheDocument();
+  });
+
+  it("sin entregas pero con pedidos en curso, el aviso dice cuánto hay en curso", () => {
+    mockComparados.mockReturnValue({
+      actual: datos("2026-11-01", "2026-11-30", pedidosNoviembre.filter((p) => p.status !== "ENTREGADO")),
+      anterior: datos("2026-10-01", "2026-10-31", []),
+      rangoAnterior: { desde: "2026-10-01", hasta: "2026-10-31" },
+    });
+    renderPagina();
+    expect(screen.getByText("Todavía no hay ventas entregadas en el periodo")).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(`3 pedidos en curso por ${formatSoles(680).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`))).toBeInTheDocument();
+  });
+
   it("los envíos son el flete por pedido, con su cobertura y la nota de las entregas sin historial", () => {
     mockComparados.mockReturnValue({
       actual: datos("2026-11-01", "2026-11-30", pedidosNoviembre, {

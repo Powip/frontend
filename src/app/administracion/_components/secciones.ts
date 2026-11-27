@@ -1,8 +1,7 @@
 /**
  * Navegación de Administración (FEAT-34): 5 secciones con subpestañas, como el Panel de control. Las URL de siempre
- * no cambian. Liquidaciones salió del menú (vive en Operaciones). Cuentas queda fuera del menú hasta tener backend
- * (D6, 25-11-2026). Capital y ROI volvió al menú (Octa, 26-11-2026) con un aviso de que sus datos viven solo en el
- * navegador (`soloNavegador`) hasta la Fase 3.
+ * no cambian. Liquidaciones salió del menú (vive en Operaciones). Fase 3 (27-11-2026): Cuentas por cobrar y pagar
+ * vuelve al menú en Caja y Capital y ROI pierde el aviso «solo en este navegador»: los dos guardan en el servidor.
  */
 
 export interface PaginaAdmin {
@@ -11,8 +10,6 @@ export interface PaginaAdmin {
   label: string;
   titulo: string;
   subtitulo: string;
-  /** Sus datos se guardan solo en el navegador (sin backend todavía): el layout lo avisa arriba de la página. */
-  soloNavegador?: boolean;
 }
 
 export interface SeccionAdmin {
@@ -123,26 +120,23 @@ export const SECCIONES_ADMIN: SeccionAdmin[] = [
         subtitulo: "Entradas y salidas mes a mes del año del periodo",
       },
       {
+        href: "/administracion/cuentas",
+        label: "Cuentas por cobrar y pagar",
+        titulo: "Cuentas por cobrar y pagar",
+        subtitulo: "Lo que te deben y lo que debes, hoy",
+      },
+      {
         href: "/administracion/capital",
         label: "Capital y ROI",
         titulo: "Capital y ROI",
         subtitulo: "Capital invertido, retorno y préstamos",
-        soloNavegador: true,
       },
     ],
   },
 ];
 
-/** Páginas que siguen existiendo pero no están en el menú. */
-export const PAGINAS_FUERA_DE_MENU: (PaginaAdmin & { seccion: string })[] = [
-  {
-    seccion: "caja",
-    href: "/administracion/cuentas",
-    label: "Cuentas por cobrar y pagar",
-    titulo: "Cuentas por cobrar y pagar",
-    subtitulo: "Fuera del menú hasta tener backend",
-  },
-];
+/** Páginas que siguen existiendo pero no están en el menú (hoy ninguna). */
+export const PAGINAS_FUERA_DE_MENU: (PaginaAdmin & { seccion: string })[] = [];
 
 export function ubicarPagina(pathname: string): { seccion: SeccionAdmin; pagina: PaginaAdmin; enMenu: boolean } | null {
   for (const seccion of SECCIONES_ADMIN) {
