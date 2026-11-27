@@ -6,16 +6,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { crmError } from "@/services/crmService";
+import { hasAdminAccess } from "@/config/permissions.config";
+import { useAuth } from "@/contexts/AuthContext";
 import { useCrmMe } from "@/hooks/useCrmMe";
 import {
   useChannelAccounts,
   useCrmAccess,
   useCrmPlan,
+  useDeleteChannelAccount,
   useDisconnectChannelAccount,
   useReconnectChannelAccount,
   useUpdateChannelAccount,
 } from "@/hooks/useCrmPlan";
 import type { ChannelAccount } from "@/services/crmPlanService";
+import ConfirmDialog from "./ConfirmDialog";
 import { NATIVE_SELECT_CLASS } from "./format";
 
 const soles = (value: number) => `S/ ${Number.isInteger(value) ? value : value.toFixed(2)}`;
@@ -119,15 +123,17 @@ const CHANNEL_LABEL: Record<string, string> = {
   tiktok: "TikTok",
 };
 
-function AccountRow({ account }: { account: ChannelAccount }) {
+function AccountRow({ account, canDelete }: { account: ChannelAccount; canDelete: boolean }) {
   const { stores } = useCrmMe();
   const update = useUpdateChannelAccount();
   const disconnect = useDisconnectChannelAccount();
   const reconnect = useReconnectChannelAccount();
+  const remove = useDeleteChannelAccount();
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [name, setName] = useState(account.name ?? "");
   const [storeId, setStoreId] = useState(account.storeId ?? "");
   const dirty = name.trim() !== (account.name ?? "") || storeId !== (account.storeId ?? "");
-  const busy = update.isPending || disconnect.isPending || reconnect.isPending;
+  const busy = update.isPending || disconnect.isPending || reconnect.isPending || remove.isPending;
   const label = account.name || account.accountId;
 
   return (
@@ -179,6 +185,19 @@ function AccountRow({ account }: { account: ChannelAccount }) {
               Reconectar
             </Button>
           )}
+          {canDelete && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => setConfirmDelete(true)}
+            >
+              {remove.isPending && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
+              Eliminar
+            </Button>
+          )}
           <Button
             type="button"
             size="sm"
@@ -195,16 +214,34 @@ function AccountRow({ account }: { account: ChannelAccount }) {
           </Button>
         </div>
       </div>
+      <ConfirmDialog
+        open={confirmDelete}
+        title={`¿Eliminar ${label}?`}
+        description={
+          `Se borran esta cuenta, todos sus chats (también los abiertos), sus mensajes y archivos, y se corta su conexión. ` +
+          `Las ventas y pedidos no se tocan, y las otras cuentas de la tienda siguen igual. Esto no se puede deshacer.`
+        }
+        confirmLabel="Sí, eliminar"
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() => {
+          setConfirmDelete(false);
+          remove.mutate(account);
+        }}
+      />
     </li>
   );
 }
 
 /**
  * «Cuentas conectadas»: números y páginas por los que entran los chats. Cambiar la tienda
- * mueve sus chats a esa tienda. No se desconecta una cuenta con chats abiertos.
+ * mueve sus chats a esa tienda. No se desconecta una cuenta con chats abiertos. Desconectada,
+ * no entra ni sale ningún mensaje por ella. «Eliminar» (solo el jefe) la borra con sus chats.
  */
 export function ChannelAccountsCard() {
   const accounts = useChannelAccounts();
+  // «Eliminar» no se puede deshacer: solo el dueño o administrador de la empresa (lo vuelve a revisar ms-crm).
+  const { auth } = useAuth();
+  const canDelete = hasAdminAccess(auth?.user?.role);
   const rows = accounts.data ?? [];
   const noStore = rows.filter((a) => a.isActive && !a.storeId).length;
   return (
@@ -232,7 +269,7 @@ export function ChannelAccountsCard() {
       ) : (
         <ul className="space-y-2">
           {rows.map((a) => (
-            <AccountRow key={`${a.id}-${a.name ?? ""}-${a.storeId ?? ""}`} account={a} />
+            <AccountRow key={`${a.id}-${a.name ?? ""}-${a.storeId ?? ""}`} account={a} canDelete={canDelete} />
           ))}
         </ul>
       )}

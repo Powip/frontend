@@ -9,8 +9,9 @@ jest.mock("@/lib/axiosAuth", () => ({
   __esModule: true,
   default: { get: jest.fn(), post: jest.fn(), put: jest.fn(), patch: jest.fn(), delete: jest.fn() },
 }));
+const session = { role: "admin" };
 jest.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ auth: { accessToken: "t", user: { id: "u1" }, company: { id: "co1" } } }),
+  useAuth: () => ({ auth: { accessToken: "t", user: { id: "u1", role: session.role }, company: { id: "co1" } } }),
 }));
 jest.mock("sonner", () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
 jest.mock("@/hooks/useCrmMe", () => ({
@@ -34,6 +35,7 @@ jest.mock("@/services/crmPlanService", () => ({
   updateChannelAccount: jest.fn(),
   disconnectChannelAccount: jest.fn(),
   reconnectChannelAccount: jest.fn(),
+  deleteChannelAccount: jest.fn(),
 }));
 const m = svc as jest.Mocked<typeof svc>;
 const t = toast as jest.Mocked<typeof toast>;
@@ -155,6 +157,50 @@ describe("ChannelAccountsCard", () => {
     expect(await screen.findByText("Desconectada")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Reconectar" }));
     await waitFor(() => expect(t.success).toHaveBeenCalledWith("Ventas Lima reconectada"));
+  });
+
+  it("«Eliminar» pide confirmar en español y solo borra al confirmar", async () => {
+    session.role = "admin";
+    m.listChannelAccounts.mockResolvedValue([account(), account({ id: "a2", accountId: "1666", name: "Ventas Norte" })]);
+    m.deleteChannelAccount.mockResolvedValue({
+      id: "a1",
+      channel: "whatsapp",
+      accountId: "1555",
+      deletedConversations: 3,
+      deletedMessages: 20,
+      deletedFiles: 1,
+      connection: "deleted",
+    });
+    renderWith(<ChannelAccountsCard />);
+    const row = await screen.findByTestId("channel-account-a1");
+
+    fireEvent.click(within(row).getByRole("button", { name: "Eliminar" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText("¿Eliminar Ventas Lima?")).toBeInTheDocument();
+    expect(within(dialog).getByText(/también los abiertos/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Las ventas y pedidos no se tocan/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/no se puede deshacer/)).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(m.deleteChannelAccount).not.toHaveBeenCalled();
+
+    fireEvent.click(within(row).getByRole("button", { name: "Eliminar" }));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Sí, eliminar" }));
+    await waitFor(() => expect(m.deleteChannelAccount).toHaveBeenCalledWith("a1"));
+    await waitFor(() => expect(t.success).toHaveBeenCalledWith("Ventas Lima eliminada (3 chats borrados)"));
+    await waitFor(() => expect(screen.queryByTestId("channel-account-a1")).not.toBeInTheDocument());
+    // La otra cuenta de la tienda sigue.
+    expect(screen.getByTestId("channel-account-a2")).toBeInTheDocument();
+  });
+
+  it("sin ser dueño o administrador no aparece «Eliminar»", async () => {
+    session.role = "seller";
+    m.listChannelAccounts.mockResolvedValue([account()]);
+    renderWith(<ChannelAccountsCard />);
+    expect(await screen.findByRole("button", { name: "Desconectar" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Eliminar" })).not.toBeInTheDocument();
+    session.role = "admin";
   });
 
   it("sin cuentas explica cuándo aparecen", async () => {
