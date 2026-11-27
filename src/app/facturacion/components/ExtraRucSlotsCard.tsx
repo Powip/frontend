@@ -72,7 +72,7 @@ function formatDay(value: string | null): string {
 }
 
 /**
- * Cupos de RUC extra que la empresa paga (S/ 30/mes cada uno, siempre mensual). Aquí se da de baja un cupo: deja
+ * Cupos de RUC extra que la empresa paga (S/ 15/mes cada uno, siempre mensual). Aquí se da de baja un cupo: deja
  * de cobrarse y vale hasta el final del período ya pagado. Los cupos dados de baja o vencidos se pueden volver a
  * pagar. No aparece si la empresa no tiene ninguno.
  */

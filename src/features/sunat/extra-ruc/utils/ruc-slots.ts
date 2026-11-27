@@ -2,7 +2,7 @@ import type { SunatProfile } from "@/features/sunat/sunat-profile/models/sunat-p
 import type { ExtraRucSummary } from "../models/extra-ruc";
 
 /** Precio mensual de cada RUC extra mientras no se sepa el real (el servidor manda pricePerRuc). */
-export const DEFAULT_EXTRA_RUC_PRICE = 30;
+export const DEFAULT_EXTRA_RUC_PRICE = 15;
 
 /** Cuántos RUC están activos (los desactivados no gastan cupo). */
 export function countActiveIssuers(profiles: SunatProfile[]): number {

@@ -17,7 +17,7 @@ function summary(overrides: Partial<ExtraRucSummary>): ExtraRucSummary {
     renewingRucs: 0,
     maxRucs: 1,
     unlimited: false,
-    pricePerRuc: 30,
+    pricePerRuc: 15,
     monthlyExtraTotal: 0,
     currency: "PEN",
     purchases: [],
@@ -43,7 +43,7 @@ function paidPurchase(ruc: string): ExtraRucPurchase {
     id: `p-${ruc}`,
     ruc,
     razonSocial: "X",
-    amount: 30,
+    amount: 15,
     currency: "PEN",
     status: "PAID",
     redirectUrl: null,
@@ -108,7 +108,7 @@ describe("InactiveIssuersAlert", () => {
     const { container } = render(
       <InactiveIssuersAlert
         profiles={[main]}
-        pricePerRuc={30}
+        pricePerRuc={15}
         summary={summary({})}
         onManage={jest.fn()}
         onPay={jest.fn()}
@@ -124,7 +124,7 @@ describe("InactiveIssuersAlert", () => {
     render(
       <InactiveIssuersAlert
         profiles={[main, unpaid]}
-        pricePerRuc={30}
+        pricePerRuc={15}
         summary={summary({})}
         onManage={jest.fn()}
         onPay={onPay}
@@ -144,7 +144,7 @@ describe("InactiveIssuersAlert", () => {
     render(
       <InactiveIssuersAlert
         profiles={[main, extra]}
-        pricePerRuc={30}
+        pricePerRuc={15}
         summary={summary({ maxRucs: 1 })}
         onManage={jest.fn()}
         onPay={onPay}
@@ -163,7 +163,7 @@ describe("InactiveIssuersAlert", () => {
     render(
       <InactiveIssuersAlert
         profiles={[main, profile("b", "20100000002", { isActive: false })]}
-        pricePerRuc={30}
+        pricePerRuc={15}
         summary={summary({})}
         onManage={onManage}
         onPay={jest.fn()}

@@ -80,7 +80,7 @@ export function getOverLimitProfiles(
  * Avisos de RUC sin cupo pagado:
  * - los que el sistema desactivó por falta de pago (UNPAID), con botón para pagar y reactivar;
  * - los activos que superan los cupos pagados (se desactivarán si no se paga);
- * - los que desactivó el usuario (cada RUC extra activo cuesta S/ 30/mes: se activan solo los que se usen).
+ * - los que desactivó el usuario (cada RUC extra activo cuesta S/ 15/mes: se activan solo los que se usen).
  */
 export function InactiveIssuersAlert({
   profiles,

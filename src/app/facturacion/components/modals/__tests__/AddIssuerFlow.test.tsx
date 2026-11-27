@@ -44,7 +44,7 @@ function summary(overrides: Partial<ExtraRucSummary>): ExtraRucSummary {
     renewingRucs: 0,
     maxRucs: 1,
     unlimited: false,
-    pricePerRuc: 30,
+    pricePerRuc: 15,
     monthlyExtraTotal: 0,
     currency: "PEN",
     purchases: [],
@@ -97,7 +97,7 @@ describe("AddIssuerFlow", () => {
       <AddIssuerFlow isOpen onClose={jest.fn()} profiles={[profile("a", "20111111111", true)]} />,
     );
 
-    await fillAndConfirm(/Agregar RUC \(\+S\/ 30\/mes\)/);
+    await fillAndConfirm(/Agregar RUC \(\+S\/ 15\/mes\)/);
 
     expect(buyMutate).toHaveBeenCalledWith(
       { ruc: "20999999999", razonSocial: "NUEVA SAC" },
@@ -119,7 +119,7 @@ describe("AddIssuerFlow", () => {
       <AddIssuerFlow isOpen onClose={onClose} profiles={[profile("a", "20111111111", true)]} />,
     );
 
-    await fillAndConfirm(/Agregar RUC \(\+S\/ 30\/mes\)/);
+    await fillAndConfirm(/Agregar RUC \(\+S\/ 15\/mes\)/);
 
     expect(push).toHaveBeenCalledWith("/pasate-a-flow");
     expect(onClose).toHaveBeenCalled();
@@ -207,7 +207,7 @@ describe("AddIssuerFlow", () => {
 
     expect(screen.getByLabelText("RUC")).toHaveValue("20222222222");
 
-    await userEvent.click(screen.getByRole("button", { name: /Pagar cupo \(\+S\/ 30\/mes\)/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Pagar cupo \(\+S\/ 15\/mes\)/ }));
 
     expect(buyMutate).toHaveBeenCalledWith(
       { ruc: "20222222222", razonSocial: "EMPRESA b" },
@@ -246,7 +246,7 @@ describe("AddIssuerFlow", () => {
 
     expect(screen.getByLabelText("RUC")).toHaveValue("20333333333");
 
-    await userEvent.click(screen.getByRole("button", { name: /Pagar cupo \(\+S\/ 30\/mes\)/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Pagar cupo \(\+S\/ 15\/mes\)/ }));
 
     expect(buyMutate).toHaveBeenCalledWith(
       { ruc: "20333333333", razonSocial: "VENCIDA SAC" },

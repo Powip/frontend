@@ -24,7 +24,7 @@ function renderModal(overrides: Partial<React.ComponentProps<typeof AddIssuerMod
       isOpen
       onClose={onClose}
       onConfirm={onConfirm}
-      pricePerRuc={30}
+      pricePerRuc={15}
       requiresPayment
       renewingRucs={2}
       existingRucs={["20111111111"]}
@@ -36,16 +36,16 @@ function renderModal(overrides: Partial<React.ComponentProps<typeof AddIssuerMod
 }
 
 describe("AddIssuerModal", () => {
-  it("avisa que es un add-on de S/ 30/mes que se paga por adelantado y cuánto pasaría a pagar", () => {
+  it("avisa que es un add-on de S/ 15/mes que se paga por adelantado y cuánto pasaría a pagar", () => {
     renderModal();
 
     expect(screen.getByText("Agregar RUC emisor")).toBeInTheDocument();
-    expect(screen.getByText(/add-on de S\/ 30\/mes/)).toBeInTheDocument();
+    expect(screen.getByText(/add-on de S\/ 15\/mes/)).toBeInTheDocument();
     expect(
-      screen.getByText(/S\/ 90\/mes por RUC adicionales \(3 adicionales\)/),
+      screen.getByText(/S\/ 45\/mes por RUC adicionales \(3 adicionales\)/),
     ).toBeInTheDocument();
     expect(screen.getByText(/por adelantado/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Agregar RUC (+S/ 30/mes)" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Agregar RUC (+S/ 15/mes)" })).toBeInTheDocument();
   });
 
   it("si hay un RUC incluido libre no habla de pago", () => {
@@ -64,7 +64,7 @@ describe("AddIssuerModal", () => {
 
     expect(screen.getByLabelText("Razón social")).toHaveValue("EMPRESA VERIFICADA S.A.C.");
 
-    await userEvent.click(screen.getByRole("button", { name: "Agregar RUC (+S/ 30/mes)" }));
+    await userEvent.click(screen.getByRole("button", { name: "Agregar RUC (+S/ 15/mes)" }));
 
     expect(onConfirm).toHaveBeenCalledWith({
       ruc: "20999999999",
@@ -76,7 +76,7 @@ describe("AddIssuerModal", () => {
     const { onConfirm } = renderModal();
 
     await userEvent.type(screen.getByLabelText("RUC"), "30123456789");
-    await userEvent.click(screen.getByRole("button", { name: "Agregar RUC (+S/ 30/mes)" }));
+    await userEvent.click(screen.getByRole("button", { name: "Agregar RUC (+S/ 15/mes)" }));
 
     expect(screen.getByRole("alert")).toHaveTextContent(
       "El RUC debe tener 11 dígitos y empezar con 10 o 20.",
@@ -89,7 +89,7 @@ describe("AddIssuerModal", () => {
 
     await userEvent.type(screen.getByLabelText("RUC"), "20111111111");
     await userEvent.type(screen.getByLabelText("Razón social"), "OTRA SAC");
-    await userEvent.click(screen.getByRole("button", { name: "Agregar RUC (+S/ 30/mes)" }));
+    await userEvent.click(screen.getByRole("button", { name: "Agregar RUC (+S/ 15/mes)" }));
 
     expect(screen.getByRole("alert")).toHaveTextContent("Ese RUC ya está conectado");
     expect(onConfirm).not.toHaveBeenCalled();
@@ -99,7 +99,7 @@ describe("AddIssuerModal", () => {
     const { onConfirm } = renderModal();
 
     await userEvent.type(screen.getByLabelText("RUC"), "20999999999");
-    await userEvent.click(screen.getByRole("button", { name: "Agregar RUC (+S/ 30/mes)" }));
+    await userEvent.click(screen.getByRole("button", { name: "Agregar RUC (+S/ 15/mes)" }));
 
     expect(screen.getByRole("alert")).toHaveTextContent("Verifica el RUC");
     expect(onConfirm).not.toHaveBeenCalled();
@@ -119,7 +119,7 @@ describe("AddIssuerModal", () => {
 
     expect(screen.getByText("Pagar cupo del RUC")).toBeInTheDocument();
     expect(screen.queryByText("Agregar RUC emisor")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Pagar cupo (+S/ 30/mes)" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pagar cupo (+S/ 15/mes)" })).toBeInTheDocument();
   });
 
   it("con un RUC que ya existe y entra gratis, habla de activarlo", () => {

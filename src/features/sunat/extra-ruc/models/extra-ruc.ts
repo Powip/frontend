@@ -1,7 +1,7 @@
 /** status: PENDING | PAID | FAILED (ms-subscription). */
 export type ExtraRucPurchaseStatus = "PENDING" | "PAID" | "FAILED";
 
-/** Compra por adelantado de un RUC extra (S/ 30/mes). */
+/** Compra por adelantado de un RUC extra (S/ 15/mes). */
 export interface ExtraRucPurchase {
   id: string;
   ruc: string;

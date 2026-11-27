@@ -19,7 +19,7 @@ const MESSAGES_BY_CODE: Record<string, string> = {
   SUNAT_PROFILE_NOT_FOUND:
     "El certificado ya no existe o fue eliminado. Refresca la página e intenta nuevamente.",
   SUNAT_RUC_LIMIT_REACHED:
-    "Tu cuenta llegó al límite de RUC activos. Agrega un RUC extra (S/ 30/mes) para poder usar otro.",
+    "Tu cuenta llegó al límite de RUC activos. Agrega un RUC extra (S/ 15/mes) para poder usar otro.",
   SUNAT_RUC_ALLOWANCE_UNAVAILABLE:
     "No pudimos comprobar cuántos RUC tienes pagados. Intenta de nuevo en un momento.",
   SUNAT_PROFILE_DEFAULT_CANNOT_BE_DEACTIVATED:
