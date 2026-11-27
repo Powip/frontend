@@ -32,7 +32,7 @@ import {
 } from "@/services/courierSettlementsService";
 import { CourierEvidenceSelector } from "./CourierEvidenceSelector";
 
-const today = () => {
+export const today = () => {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 };
@@ -48,7 +48,7 @@ export function settlementError(error: unknown): string {
     ? error.message
     : "No se pudo completar la operación. Puedes reintentar.";
 }
-function useActive() {
+export function useActive() {
   const active = useRef(true);
   useEffect(() => {
     active.current = true;
@@ -58,20 +58,22 @@ function useActive() {
   }, []);
   return active;
 }
-function ProofInput({
+export function ProofInput({
+  id = "new-settlement-proof",
   file,
   disabled,
   onChange,
 }: {
+  id?: string;
   file: File | null;
   disabled: boolean;
   onChange: (file: File | null) => void;
 }) {
   return (
     <div className="space-y-1">
-      <Label htmlFor="new-settlement-proof">Comprobante</Label>
+      <Label htmlFor={id}>Comprobante</Label>
       <Input
-        id="new-settlement-proof"
+        id={id}
         type="file"
         disabled={disabled}
         accept="image/jpeg,image/png,image/webp,application/pdf"
@@ -90,6 +92,9 @@ export function ConfirmCollectionDialog({
   orders,
   couriers,
   linkedEvidenceIds = [],
+  pendingByOrder,
+  excludedOrderIds,
+  initial,
   onClose,
   onPersisted,
   onComplete,
@@ -98,17 +103,33 @@ export function ConfirmCollectionDialog({
   orders: OrderHeader[];
   couriers: Courier[];
   linkedEvidenceIds?: string[];
+  /** Importe pendiente por pedido (de «Por liquidar»): se precarga al elegir el pedido. */
+  pendingByOrder?: ReadonlyMap<string, number>;
+  /** Pedidos cuyo total ya está confirmado: no se ofrecen (ms-courier respondería 409). */
+  excludedOrderIds?: ReadonlySet<string>;
+  /** Pedido e importe precargados desde una fila de «Por liquidar». */
+  initial?: { orderId: string; amount: number; collectedAt?: string };
   onClose: () => void;
   onPersisted: () => Promise<unknown>;
   onComplete: (collection: CourierCollection) => void;
 }) {
+  const activeCouriers = couriers.filter((courier) => courier.isActive !== false);
+  const courierFor = (id: string) => {
+    const order = orders.find((item) => item.id === id);
+    const matches = activeCouriers.filter(
+      (courier) => courier.name.trim().toLowerCase() === order?.courier?.trim().toLowerCase(),
+    );
+    if (order?.courierId)
+      return activeCouriers.some((courier) => courier.id === order.courierId) ? order.courierId : "";
+    return matches.length === 1 ? matches[0].id : "";
+  };
   const [search, setSearch] = useState("");
-  const [orderId, setOrderId] = useState("");
-  const [courierId, setCourierId] = useState("");
+  const [orderId, setOrderId] = useState(() => initial?.orderId ?? "");
+  const [courierId, setCourierId] = useState(() => (initial ? courierFor(initial.orderId) : ""));
   const [showEvidence, setShowEvidence] = useState(false);
   const [providerEvidenceId, setProviderEvidenceId] = useState("");
-  const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(today);
+  const [amount, setAmount] = useState(() => (initial ? String(initial.amount) : ""));
+  const [date, setDate] = useState(() => initial?.collectedAt ?? today());
   const [notes, setNotes] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -122,6 +143,7 @@ export function ConfirmCollectionDialog({
     (order) =>
       order.status === "ENTREGADO" &&
       (order.courierId || order.courier) &&
+      (!excludedOrderIds?.has(order.id) || order.id === orderId) &&
       `${order.orderNumber} ${order.customer?.fullName ?? ""}`
         .toLowerCase()
         .includes(search.toLowerCase()),
@@ -139,11 +161,9 @@ export function ConfirmCollectionDialog({
     setOrderId(id);
     setShowEvidence(false);
     setProviderEvidenceId("");
-    const order = orders.find((item) => item.id === id);
-    const matches = couriers.filter(
-      (courier) => courier.name.trim().toLowerCase() === order?.courier?.trim().toLowerCase(),
-    );
-    setCourierId(order?.courierId ?? (matches.length === 1 ? matches[0].id : ""));
+    setCourierId(courierFor(id));
+    const pending = pendingByOrder?.get(id);
+    if (pending !== undefined) setAmount(String(pending));
   }
   async function submit() {
     if (submitting.current || (!saved && !valid)) return;
@@ -239,13 +259,25 @@ export function ConfirmCollectionDialog({
             onChange={(e) => setCourierId(e.target.value)}
           >
             <option value="">Selecciona courier</option>
-            {couriers.map((courier) => (
+            {activeCouriers.map((courier) => (
               <option key={courier.id} value={courier.id}>
                 {courier.name}
               </option>
             ))}
           </select>
         </div>
+        {selected && selected.courierId && !courierId && (
+          <p role="alert" className="text-sm text-amber-700">
+            El courier del pedido está inactivo o eliminado. Reactívalo en Configuración → Tiendas →
+            Couriers antes de confirmar el cobro.
+          </p>
+        )}
+        {selected && !selected.courierId && !courierId && (
+          <p role="alert" className="text-sm text-amber-700">
+            «{selected.courier}» no coincide con un único courier activo. Regístralo con ese nombre en
+            Configuración → Tiendas → Couriers.
+          </p>
+        )}
         {orderId && !showEvidence && (
           <Button
             type="button"

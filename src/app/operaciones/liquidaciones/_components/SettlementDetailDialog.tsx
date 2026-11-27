@@ -27,7 +27,25 @@ import {
   type SettlementDetail,
   type SettlementProof,
 } from "@/services/courierSettlementsService";
+import { listCompanyUsers } from "@/services/userService";
 import { settlementError } from "./SettlementCreateDialogs";
+
+/** «Tú», el nombre del usuario de la empresa o un id corto (nunca el UUID entero). */
+function useActorLabel(companyId: string, actorId: string) {
+  const users = useQuery({
+    queryKey: ["company-user-names", companyId],
+    queryFn: ({ signal }) => listCompanyUsers(companyId, signal),
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+  return (id: string | null | undefined) => {
+    if (!id) return "—";
+    if (id.toLowerCase() === actorId.toLowerCase()) return "Tú";
+    const user = users.data?.find((item) => item.id?.toLowerCase() === id.toLowerCase());
+    const name = [user?.name, user?.surname].filter(Boolean).join(" ").trim();
+    return name || user?.email || `Usuario ${id.slice(0, 8)}`;
+  };
+}
 
 const eventLabels: Record<string, string> = {
   COLLECTION_CONFIRMED: "Cobro confirmado",
@@ -76,6 +94,7 @@ export function SettlementDetailDialog({
       active.current = false;
     };
   }, []);
+  const actorLabel = useActorLabel(companyId, actorId);
   const data = query.data;
   const settlement = data && "allocations" in data ? data : null;
   const collection = data && !("allocations" in data) ? data : null;
@@ -162,7 +181,7 @@ export function SettlementDetailDialog({
                   : settlementStatusLabels[settlement!.status]}
               </p>
               <p>
-                Registrado por {data.createdBy} · {new Date(data.createdAt).toLocaleString("es-PE")}
+                Registrado por {actorLabel(data.createdBy)} · {new Date(data.createdAt).toLocaleString("es-PE")}
               </p>
               {data.notes && <p>{data.notes}</p>}
             </div>
@@ -246,7 +265,7 @@ export function SettlementDetailDialog({
                 </div>
                 {settlement.reviewedAt && (
                   <p className="rounded bg-muted/40 p-3 text-sm">
-                    Revisado por {settlement.reviewedBy} ·{" "}
+                    Revisado por {actorLabel(settlement.reviewedBy)} ·{" "}
                     {new Date(settlement.reviewedAt).toLocaleString("es-PE")}
                     <br />
                     {settlement.reviewNotes}
@@ -340,7 +359,7 @@ export function SettlementDetailDialog({
                       {eventLabels[event.type] ?? "Actualización del registro"}
                     </p>
                     <p>
-                      {event.actorId} · {new Date(event.createdAt).toLocaleString("es-PE")}
+                      {actorLabel(event.actorId)} · {new Date(event.createdAt).toLocaleString("es-PE")}
                     </p>
                     {typeof event.data.notes === "string" && <p>{event.data.notes}</p>}
                   </li>
