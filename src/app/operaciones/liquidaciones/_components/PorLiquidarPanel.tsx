@@ -158,8 +158,9 @@ export function PorLiquidarPanel({
       <div className="space-y-4">
         <p className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
           Pedidos entregados cuyo cobro el courier todavía no rindió. Esperado = total del pedido − pagos
-          recibidos directo por el negocio (los pagos contraentrega y en efectivo los tiene el courier). Es una
-          estimación para reclamar: el cobro queda registrado recién cuando lo confirmas.
+          aprobados que recibió directo el negocio (un adelanto sin aprobar no se descuenta; los pagos
+          contraentrega y en efectivo los tiene el courier). Es una estimación para reclamar: el cobro queda
+          registrado recién cuando lo confirmas.
         </p>
 
         {summary.length > 0 && (
