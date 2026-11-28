@@ -18,6 +18,16 @@ export const SUNAT_DOCUMENT_CDR_STATUSES = {
 export type SunatDocumentCdrStatus =
   (typeof SUNAT_DOCUMENT_CDR_STATUSES)[keyof typeof SUNAT_DOCUMENT_CDR_STATUSES];
 
+/** Comunicación de baja (RA) state of a factura or nota of serie F. */
+export const SUNAT_DOCUMENT_VOID_STATUSES = {
+  IN_PROCESS: "IN_PROCESS",
+  VOIDED: "VOIDED",
+  REJECTED: "REJECTED",
+} as const;
+
+export type SunatDocumentVoidStatus =
+  (typeof SUNAT_DOCUMENT_VOID_STATUSES)[keyof typeof SUNAT_DOCUMENT_VOID_STATUSES];
+
 export const IDENTITY_DOCUMENT_TYPES = {
   DNI: "1",
   CARNET_EXTRANJERIA: "4",

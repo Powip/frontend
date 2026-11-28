@@ -8,9 +8,8 @@ import {
 } from "../enums/sunat-document.enums";
 import type { SunatDocument, SunatDocumentItem } from "../models/sunat-document.model";
 import { calculateSunatDocumentTotals, roundCurrency } from "./calculate-sunat-document-totals";
+import { countsAsIssued } from "./counts-as-issued";
 import { isGiftTaxType } from "./gift-lines";
-
-const ACTIVE_STATUSES: readonly string[] = ["PENDING", "ACCEPTED", "ACCEPTED_WITH_OBSERVATION"];
 
 /**
  * Catalog 09 reasons that cancel the whole comprobante: the note copies the
@@ -144,7 +143,7 @@ export function getCreditableBalance(
       (document) =>
         document.taxDocumentType === SUNAT_DOCUMENT_TYPES.CREDIT_NOTE &&
         document.referenceDocumentId === original.id &&
-        ACTIVE_STATUSES.includes(document.cdrStatus),
+        countsAsIssued(document),
     )
     .reduce((sum, note) => sum + (Number(note.taxDocumentPayload?.totals?.grandTotal) || 0), 0);
 

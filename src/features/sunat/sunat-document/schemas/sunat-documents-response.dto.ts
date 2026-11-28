@@ -5,6 +5,7 @@ import {
   IDENTITY_DOCUMENT_TYPES,
   SUNAT_DOCUMENT_CDR_STATUSES,
   SUNAT_DOCUMENT_TYPES,
+  SUNAT_DOCUMENT_VOID_STATUSES,
   SUNAT_TAX_AFFECTATION_TYPES,
   UNIT_CODES,
 } from "../enums/sunat-document.enums.js";
@@ -103,6 +104,16 @@ export const sunatDocumentResponseSchema = z.object({
   }),
 
   referenceDocumentId: z.uuid().nullable(),
+
+  voidStatus: z.enum(SUNAT_DOCUMENT_VOID_STATUSES).nullable(),
+  voidReason: z.string().nullable(),
+  voidRequestedAt: z.iso.datetime().nullable(),
+  voidTicket: z.string().nullable(),
+  voidSunatCode: z.string().nullable(),
+  voidSunatDescription: z.string().nullable(),
+  voidedAt: z.iso.datetime().nullable(),
+  voidDeadline: z.iso.date(),
+  voidable: z.boolean(),
 
   createdAt: z.iso.datetime(),
 

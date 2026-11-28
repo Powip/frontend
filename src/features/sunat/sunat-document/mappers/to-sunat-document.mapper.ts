@@ -27,6 +27,16 @@ export function toSunatDocument(dto: SunatDocumentResponseDto): SunatDocument {
 
     referenceDocumentId: dto.referenceDocumentId,
 
+    voidStatus: dto.voidStatus ?? null,
+    voidReason: dto.voidReason ?? null,
+    voidRequestedAt: dto.voidRequestedAt ?? null,
+    voidTicket: dto.voidTicket ?? null,
+    voidSunatCode: dto.voidSunatCode ?? null,
+    voidSunatDescription: dto.voidSunatDescription ?? null,
+    voidedAt: dto.voidedAt ?? null,
+    voidDeadline: dto.voidDeadline ?? "",
+    voidable: dto.voidable === true,
+
     createdAt: dto.createdAt,
     updatedAt: dto.updatedAt,
   };

@@ -4,6 +4,7 @@ import type {
   IdentityDocumentType,
   SunatDocumentCdrStatus,
   SunatDocumentType,
+  SunatDocumentVoidStatus,
   SunatTaxAffectationType,
   UnitCode,
 } from "../enums/sunat-document.enums";
@@ -90,6 +91,19 @@ export interface SunatDocumentResponseDto {
   taxDocumentPayload: SunatDocumentPayloadResponseDto;
 
   referenceDocumentId: string | null;
+
+  /** Comunicación de baja: null until someone asks to void it. */
+  voidStatus: SunatDocumentVoidStatus | null;
+  voidReason: string | null;
+  voidRequestedAt: string | null;
+  voidTicket: string | null;
+  voidSunatCode: string | null;
+  voidSunatDescription: string | null;
+  voidedAt: string | null;
+  /** Last day (yyyy-mm-dd) SUNAT accepts the comunicación de baja. */
+  voidDeadline: string;
+  /** "Dar de baja" can be offered today (backend rule). */
+  voidable: boolean;
 
   createdAt: string;
   updatedAt: string;
