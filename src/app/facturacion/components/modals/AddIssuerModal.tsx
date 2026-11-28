@@ -38,7 +38,7 @@ interface AddIssuerModalProps {
   /** Precio mensual de cada RUC extra. */
   pricePerRuc: number;
   /**
-   * true: este RUC se paga (add-on de S/ 30/mes, por adelantado con la pasarela).
+   * true: este RUC se paga (add-on de S/ 15/mes, por adelantado con la pasarela).
    * false: hay un RUC incluido libre, no cuesta. null: no se sabe (lo decide el servidor al crearlo).
    */
   requiresPayment: boolean | null;

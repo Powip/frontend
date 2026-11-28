@@ -5,7 +5,7 @@ import { useExtraRucSummary } from "@/features/sunat/extra-ruc/hooks/use-extra-r
 import { DEFAULT_EXTRA_RUC_PRICE, formatSoles } from "@/features/sunat/extra-ruc/utils/ruc-slots";
 
 /**
- * Cómo se cobra el RUC extra dentro de la tarjeta del add-on Facturación SUNAT: 1 RUC incluido y S/ 30/mes por cada
+ * Cómo se cobra el RUC extra dentro de la tarjeta del add-on Facturación SUNAT: 1 RUC incluido y S/ 15/mes por cada
  * RUC adicional, siempre mensual (también con plan anual). Los RUC se agregan y se dan de baja desde
  * Facturación → Emisores (RUC).
  */
