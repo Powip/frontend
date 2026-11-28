@@ -19,10 +19,15 @@ export function useCreateSunatDocuments() {
         queryClient.setQueryData(sunatDocumentKeys.detail(document.id), document);
       }
 
-      // 2. Invalidate ALL list queries under both SUNAT documents and Sales
+      // 2. Invalidate ALL list queries under both SUNAT documents and Sales.
+      //    Also the Facturación/ventas list ["business-tax-documents"]: the sale row reads it,
+      //    so a new factura must show up there without waiting for the polling.
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: sunatDocumentKeys.all,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["business-tax-documents"],
         }),
         queryClient.invalidateQueries({
           queryKey: salesKeys.all,
