@@ -14,6 +14,10 @@ import { SUNAT_DOCUMENT_TYPES } from "@/features/sunat/sunat-document/enums/suna
 import type { SunatDocument } from "@/features/sunat/sunat-document/models/sunat-document.model";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 import { fetchAllSunatDocuments } from "@/features/sunat/sunat-document/utils/fetch-all-sunat-documents";
+import {
+  findActiveTaxDocument,
+  findCancelledTaxDocuments,
+} from "@/features/sunat/sunat-document/utils/find-active-tax-document";
 import { isPrepaymentDocument } from "@/features/sunat/sunat-document/utils/prepayments";
 import { computeTaxDocumentKpis } from "@/features/sunat/sunat-document/utils/tax-document-kpis";
 
@@ -58,19 +62,43 @@ export function useTaxDocuments() {
    * Anticipos never take the row either: the sale still waits for its final
    * comprobante. They are listed apart (`prepaymentsByOrderId`).
    */
-  const documentByOrderId = useMemo(() => {
-    const map = new Map<string, SunatDocument>();
+  const { documentByOrderId, cancelledByOrderId } = useMemo(() => {
+    const newestByOrderId = new Map<string, SunatDocument>();
+    const documentsByOrderId = new Map<string, SunatDocument[]>();
 
     for (const document of documents) {
+      documentsByOrderId.set(document.orderId, [
+        ...(documentsByOrderId.get(document.orderId) ?? []),
+        document,
+      ]);
       if (isPrepaymentDocument(document)) continue;
 
-      const current = map.get(document.orderId);
+      const current = newestByOrderId.get(document.orderId);
       if (!current || (isNoteDocument(current) && !isNoteDocument(document))) {
-        map.set(document.orderId, document);
+        newestByOrderId.set(document.orderId, document);
       }
     }
 
-    return map;
+    // Same rule as ms-sunat (findActiveDocumentForOrder): a factura/boleta that credit notes
+    // cancelled in full no longer holds the sale. The sale shows «Sin emitir» again and can be
+    // emitted with the next correlative; the cancelled document stays in the history.
+    const byOrder = new Map<string, SunatDocument>();
+    const cancelled = new Map<string, SunatDocument[]>();
+
+    for (const [orderId, orderDocuments] of documentsByOrderId) {
+      const cancelledDocuments = findCancelledTaxDocuments(orderDocuments);
+      if (cancelledDocuments.length > 0) cancelled.set(orderId, cancelledDocuments);
+
+      const active = findActiveTaxDocument(orderDocuments);
+      const newest = newestByOrderId.get(orderId);
+      if (active) {
+        byOrder.set(orderId, active);
+      } else if (newest && !cancelledDocuments.includes(newest)) {
+        byOrder.set(orderId, newest);
+      }
+    }
+
+    return { documentByOrderId: byOrder, cancelledByOrderId: cancelled };
   }, [documents]);
 
   /** Anticipos of each sale, newest first. */
@@ -107,9 +135,10 @@ export function useTaxDocuments() {
         sale,
         taxDocument: documentByOrderId.get(sale.id),
         prepayments: prepaymentsByOrderId.get(sale.id),
+        cancelledDocuments: cancelledByOrderId.get(sale.id),
       }))
       .sort((a, b) => new Date(b.sale.createdAt).getTime() - new Date(a.sale.createdAt).getTime());
-  }, [sales, documentByOrderId, prepaymentsByOrderId, error]);
+  }, [sales, documentByOrderId, prepaymentsByOrderId, cancelledByOrderId, error]);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 

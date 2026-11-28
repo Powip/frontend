@@ -88,13 +88,20 @@ it("lista las ventas desde PREPARADO y deja fuera pendientes, pagadas, anuladas 
 });
 
 it("una nota de crédito no reemplaza la factura de la venta y se lista aparte", async () => {
-  const factura = { id: "inv", orderId: "prepared", taxDocumentType: "01", cdrStatus: "ACCEPTED" };
+  const factura = {
+    id: "inv",
+    orderId: "prepared",
+    taxDocumentType: "01",
+    cdrStatus: "ACCEPTED",
+    taxDocumentPayload: { totals: { grandTotal: 100 } },
+  };
   const nota = {
     id: "nc",
     orderId: "prepared",
     taxDocumentType: "07",
     cdrStatus: "ACCEPTED",
     referenceDocumentId: "inv",
+    taxDocumentPayload: { totals: { grandTotal: 30 } },
   };
   // El backend responde del más nuevo al más antiguo: la nota llega primero.
   get.mockResolvedValue({ data: { items: [nota, factura], total: 2 } });

@@ -423,7 +423,12 @@ export default function FacturacionPage() {
         documents={taxDocuments.documents}
         profiles={activeProfiles}
         preselectId={ncPreselectId}
-        onEmitida={() => setActiveTab("nc")}
+        onEmitida={() => {
+          // The list query is not under `sunatDocumentKeys.all`: refresh it so the credited
+          // balance (and a fully credited sale back to «Sin emitir») shows right away.
+          taxDocuments.refreshListDocuments();
+          setActiveTab("nc");
+        }}
       />
     </div>
   );
